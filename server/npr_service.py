@@ -125,6 +125,7 @@ class NPRService:
                         if item_date_str_formatted == current_date_str:
                             title = item_attrs.get('title', '') or item_attrs.get('audioTitle', '')
                             description = item_attrs.get('description', '')
+                            duration = item_attrs.get('duration')
                             
                             podcast = {
                                 'company': self.company,
@@ -134,6 +135,7 @@ class NPRService:
                                 'subtitle': description,
                                 'timestamp': int(item_date.timestamp()),
                                 'language': 'en',
+                                'duration': duration,
                                 'segments': []
                             }
                             

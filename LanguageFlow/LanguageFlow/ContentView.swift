@@ -9,7 +9,17 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        PodcastLearningView(podcast: .sample)
+        TabView {
+            ChannelListView()
+                .tabItem {
+                    Label("频道", systemImage: "radio")
+                }
+            
+            PodcastLearningView(podcast: .sample)
+                .tabItem {
+                    Label("学习", systemImage: "book")
+                }
+        }
     }
 }
 

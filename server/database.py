@@ -29,6 +29,7 @@ class PodcastDatabase:
                 subtitle TEXT,
                 timestamp INTEGER NOT NULL,
                 language TEXT NOT NULL DEFAULT 'en',
+                duration INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -101,8 +102,8 @@ class PodcastDatabase:
         # 使用INSERT OR REPLACE来避免重复
         cursor.execute("""
             INSERT OR REPLACE INTO podcasts 
-            (id, company, channel, audioURL, title, subtitle, timestamp, language, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, company, channel, audioURL, title, subtitle, timestamp, language, duration, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             podcast_id,
             podcast_data['company'],
@@ -112,6 +113,7 @@ class PodcastDatabase:
             podcast_data.get('subtitle'),
             podcast_data['timestamp'],
             podcast_data.get('language', 'en'),
+            podcast_data.get('duration'),
             datetime.now().isoformat()
         ))
         
@@ -138,17 +140,11 @@ class PodcastDatabase:
     def get_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
         根据时间戳获取podcasts
-        
-        Args:
-            company: 公司名称
-            channel: 频道名称
-            timestamp: 时间戳
         """
         from datetime import timezone
         
-        # 获取当天的开始和结束时间戳（UTC时区）
         start_timestamp = timestamp
-        end_timestamp = start_timestamp + 86400  # 24小时后
+        end_timestamp = start_timestamp + 86400
         
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -183,19 +179,6 @@ class PodcastDatabase:
         return count > 0
     
     def generate_id(self, company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
-        """
-        公开方法：生成唯一ID，基于内容的hash
-        
-        Args:
-            company: 公司名称
-            channel: 频道名称
-            timestamp: 时间戳
-            audio_url: 音频URL
-            title: 标题（可选）
-            
-        Returns:
-            生成的32位hash ID
-        """
         return self._generate_id(company, channel, timestamp, audio_url, title)
     
     def get_all_channels(self) -> List[Dict[str, str]]:
@@ -251,14 +234,14 @@ class PodcastDatabase:
 
     def get_channel_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
-        获取某个频道某个日期的所有podcasts摘要（只返回id和title）
+        获取某个频道某个日期的所有podcasts摘要
         """
         start_timestamp = timestamp
         end_timestamp = start_timestamp + 86400  # 24小时后
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, title 
+            SELECT id, title, duration 
             FROM podcasts 
             WHERE company = ? AND channel = ? 
             AND timestamp >= ? AND timestamp < ?
@@ -272,7 +255,8 @@ class PodcastDatabase:
         for row in rows:
             results.append({
                 'id': row[0],
-                'title': row[1]
+                'title': row[1],
+                'duration': row[2]
             })
         
         return results
