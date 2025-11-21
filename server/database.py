@@ -135,28 +135,19 @@ class PodcastDatabase:
             return result
         return None
     
-    def get_podcasts_by_date(self, company: str, channel: str, date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    def get_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
-        根据日期获取podcasts
+        根据时间戳获取podcasts
         
         Args:
             company: 公司名称
             channel: 频道名称
-            date: 日期，如果为None则使用当天（UTC时区）
+            timestamp: 时间戳
         """
         from datetime import timezone
-        if date is None:
-            date = datetime.now(timezone.utc)
-        
-        # 统一转换为UTC时区
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=timezone.utc)
-        else:
-            date = date.astimezone(timezone.utc)
         
         # 获取当天的开始和结束时间戳（UTC时区）
-        start_datetime = datetime(date.year, date.month, date.day, tzinfo=timezone.utc)
-        start_timestamp = int(start_datetime.timestamp())
+        start_timestamp = timestamp
         end_timestamp = start_timestamp + 86400  # 24小时后
         
         conn = sqlite3.connect(self.db_path)
@@ -228,19 +219,11 @@ class PodcastDatabase:
         
         return [{'company': row[0], 'channel': row[1]} for row in rows]
     
-    def get_channel_dates(self, company: str, channel: str) -> List[str]:
+    def get_channel_dates(self, company: str, channel: str) -> List[int]:
         """
-        获取某个频道的所有日期列表
-        
-        Args:
-            company: 公司名称
-            channel: 频道名称
-            
-        Returns:
-            日期字符串列表，格式：YYYY-MM-DD
+        获取某个频道的所有日期时间戳列表
         """
         from datetime import timezone
-        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -253,46 +236,30 @@ class PodcastDatabase:
         
         rows = cursor.fetchall()
         conn.close()
-        
-        dates = []
+
+        timestamps = []
+        seen_dates = set()
         for row in rows:
             timestamp = row[0]
             date_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-            dates.append(date_obj.strftime('%Y-%m-%d'))
-        
-        return dates
-    
-    def get_channel_podcasts_by_date(self, company: str, channel: str, date: str) -> List[Dict[str, Any]]:
+            date_str = date_obj.strftime('%Y-%m-%d')
+            if date_str not in seen_dates:
+                seen_dates.add(date_str)
+                start_datetime = datetime(date_obj.year, date_obj.month, date_obj.day, tzinfo=timezone.utc)
+                timestamps.append(int(start_datetime.timestamp()))
+        return timestamps
+
+    def get_channel_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
-        获取某个频道某个日期的所有podcasts
-        
-        Args:
-            company: 公司名称
-            channel: 频道名称
-            date: 日期字符串，格式：YYYY-MM-DD
-            
-        Returns:
-            包含podcast信息的字典列表
+        获取某个频道某个日期的所有podcasts摘要（只返回id和title）
         """
-        from datetime import timezone
-        
-        try:
-            # 解析日期
-            target_date = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
-        except ValueError:
-            return []
-        
-        # 获取当天的开始和结束时间戳（UTC时区）
-        start_datetime = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
-        start_timestamp = int(start_datetime.timestamp())
+        start_timestamp = timestamp
         end_timestamp = start_timestamp + 86400  # 24小时后
-        
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
         cursor.execute("""
-            SELECT * FROM podcasts 
+            SELECT id, title 
+            FROM podcasts 
             WHERE company = ? AND channel = ? 
             AND timestamp >= ? AND timestamp < ?
             ORDER BY timestamp DESC
@@ -303,8 +270,10 @@ class PodcastDatabase:
         
         results = []
         for row in rows:
-            result = dict(row)
-            results.append(result)
+            results.append({
+                'id': row[0],
+                'title': row[1]
+            })
         
         return results
 
