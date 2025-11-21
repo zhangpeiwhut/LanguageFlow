@@ -42,6 +42,9 @@ async def root():
             'fetch_npr': '/podcast/npr/atc',
             'query': '/podcast/query',
             'get_by_id': '/podcast/{id}',
+            'get_all_channels': '/podcast/channels',
+            'get_channel_dates': '/podcast/channels/{company}/{channel}/dates',
+            'get_channel_podcasts': '/podcast/channels/{company}/{channel}/podcasts?date=YYYY-MM-DD',
             'health': '/podcast/health',
             'docs': '/docs'
         }
@@ -192,6 +195,98 @@ async def get_podcasts(
     except Exception as error:
         print(f'[podcast-service] 查询podcasts失败: {error}')
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
+
+
+@router.get('/channels')
+async def get_all_channels():
+    """
+    获取所有的podcast频道列表
+    
+    Returns:
+        包含所有频道（company + channel）的JSON响应
+    """
+    try:
+        channels = db.get_all_channels()
+        
+        return JSONResponse({
+            'success': True,
+            'count': len(channels),
+            'channels': channels
+        })
+        
+    except Exception as error:
+        print(f'[podcast-service] 获取频道列表失败: {error}')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
+
+
+@router.get('/channels/{company}/{channel}/dates')
+async def get_channel_dates(company: str, channel: str):
+    """
+    获取某个频道的所有日期列表
+    
+    Args:
+        company: 公司名称，如：NPR
+        channel: 频道名称，如：All Things Considered
+        
+    Returns:
+        包含日期列表的JSON响应
+    """
+    try:
+        dates = db.get_channel_dates(company, channel)
+        
+        return JSONResponse({
+            'success': True,
+            'company': company,
+            'channel': channel,
+            'count': len(dates),
+            'dates': dates
+        })
+        
+    except Exception as error:
+        print(f'[podcast-service] 获取频道日期列表失败: {error}')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
+
+
+@router.get('/channels/{company}/{channel}/podcasts')
+async def get_channel_podcasts(
+    company: str,
+    channel: str,
+    date: str = Query(..., description='日期，格式：YYYY-MM-DD')
+):
+    """
+    获取某个频道某个日期的所有podcasts
+    
+    Args:
+        company: 公司名称，如：NPR
+        channel: 频道名称，如：All Things Considered
+        date: 日期字符串，格式为YYYY-MM-DD
+        
+    Returns:
+        包含podcast列表的JSON响应
+    """
+    try:
+        # 验证日期格式
+        try:
+            datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            raise HTTPException(status_code=400, detail='日期格式错误，请使用YYYY-MM-DD格式')
+        
+        podcasts = db.get_channel_podcasts_by_date(company, channel, date)
+        
+        return JSONResponse({
+            'success': True,
+            'company': company,
+            'channel': channel,
+            'date': date,
+            'count': len(podcasts),
+            'podcasts': podcasts
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[podcast-service] 获取频道podcasts失败: {error}')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
 @router.get('/{podcast_id}')

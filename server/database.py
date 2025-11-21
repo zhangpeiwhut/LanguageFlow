@@ -206,4 +206,105 @@ class PodcastDatabase:
             生成的32位hash ID
         """
         return self._generate_id(company, channel, timestamp, audio_url, title)
+    
+    def get_all_channels(self) -> List[Dict[str, str]]:
+        """
+        获取所有的podcast频道（company + channel组合）
+        
+        Returns:
+            包含company和channel的字典列表
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT company, channel 
+            FROM podcasts 
+            ORDER BY company, channel
+        """)
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{'company': row[0], 'channel': row[1]} for row in rows]
+    
+    def get_channel_dates(self, company: str, channel: str) -> List[str]:
+        """
+        获取某个频道的所有日期列表
+        
+        Args:
+            company: 公司名称
+            channel: 频道名称
+            
+        Returns:
+            日期字符串列表，格式：YYYY-MM-DD
+        """
+        from datetime import timezone
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT timestamp 
+            FROM podcasts 
+            WHERE company = ? AND channel = ?
+            ORDER BY timestamp DESC
+        """, (company, channel))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        dates = []
+        for row in rows:
+            timestamp = row[0]
+            date_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            dates.append(date_obj.strftime('%Y-%m-%d'))
+        
+        return dates
+    
+    def get_channel_podcasts_by_date(self, company: str, channel: str, date: str) -> List[Dict[str, Any]]:
+        """
+        获取某个频道某个日期的所有podcasts
+        
+        Args:
+            company: 公司名称
+            channel: 频道名称
+            date: 日期字符串，格式：YYYY-MM-DD
+            
+        Returns:
+            包含podcast信息的字典列表
+        """
+        from datetime import timezone
+        
+        try:
+            # 解析日期
+            target_date = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        except ValueError:
+            return []
+        
+        # 获取当天的开始和结束时间戳（UTC时区）
+        start_datetime = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
+        start_timestamp = int(start_datetime.timestamp())
+        end_timestamp = start_timestamp + 86400  # 24小时后
+        
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM podcasts 
+            WHERE company = ? AND channel = ? 
+            AND timestamp >= ? AND timestamp < ?
+            ORDER BY timestamp DESC
+        """, (company, channel, start_timestamp, end_timestamp))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for row in rows:
+            result = dict(row)
+            results.append(result)
+        
+        return results
 
