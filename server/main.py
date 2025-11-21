@@ -1,14 +1,14 @@
-"""Podcast Service - 独立的FastAPI服务"""
+"""Podcast Service - FastAPI服务"""
 import os
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .database import PodcastDatabase
 from .npr_service import NPRService
 
-# 创建独立的FastAPI应用
+# 创建FastAPI应用
 app = FastAPI(
     title='Podcast Service',
     description='Podcast音频拉取和存储服务（支持NPR All Things Considered等）',
@@ -23,34 +23,38 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
+# 创建路由，所有路由都以 /podcast 为前缀
+router = APIRouter(prefix="/podcast", tags=["podcast"])
+
 # 初始化数据库和NPR服务
-db = PodcastDatabase()
+db_path = os.getenv("DB_PATH", "podcasts.db")
+db = PodcastDatabase(db_path=db_path)
 npr_service = NPRService()
 
 
-@app.get('/')
+@router.get('/')
 async def root():
     """服务根路径"""
     return {
         'service': 'Podcast Service',
         'version': '1.0.0',
         'endpoints': {
-            'fetch_npr': '/api/podcasts/npr/atc',
-            'query': '/api/podcasts',
-            'get_by_id': '/api/podcasts/{id}',
-            'health': '/health',
+            'fetch_npr': '/podcast/npr/atc',
+            'query': '/podcast/query',
+            'get_by_id': '/podcast/{id}',
+            'health': '/podcast/health',
             'docs': '/docs'
         }
     }
 
 
-@app.get('/health')
+@router.get('/health')
 async def health():
     """健康检查"""
     return {'status': 'healthy', 'service': 'Podcast Service'}
 
 
-@app.get('/api/podcasts/npr/atc')
+@router.get('/npr/atc')
 async def fetch_npr_atc(
     days: Optional[int] = Query(None, description='前几天的数据总和，不传等价于传1（昨天），传2表示昨天和前天，传3表示昨天、前天和大前天'),
     store: bool = Query(True, description='是否存储到数据库，默认为True')
@@ -142,7 +146,7 @@ async def fetch_npr_atc(
         raise HTTPException(status_code=500, detail=f'拉取失败: {str(error)}')
 
 
-@app.get('/api/podcasts')
+@router.get('/query')
 async def get_podcasts(
     company: str = Query(..., description='公司名称，如：NPR'),
     channel: str = Query(..., description='频道名称，如：All Things Considered'),
@@ -190,7 +194,7 @@ async def get_podcasts(
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
-@app.get('/api/podcasts/{podcast_id}')
+@router.get('/{podcast_id}')
 async def get_podcast_by_id(podcast_id: str):
     """
     根据ID获取podcast详情
@@ -219,9 +223,12 @@ async def get_podcast_by_id(podcast_id: str):
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
-# 如果直接运行此文件，启动独立服务
+# 将路由注册到应用
+app.include_router(router)
+
+# 如果直接运行此文件，启动服务
 if __name__ == '__main__':
     import uvicorn
-    port = int(os.getenv('PODCAST_SERVICE_PORT', '8001'))
+    port = int(os.getenv('PORT', '8001'))
     uvicorn.run(app, host='0.0.0.0', port=port)
 
