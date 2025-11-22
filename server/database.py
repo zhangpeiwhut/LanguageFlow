@@ -1,11 +1,7 @@
 """数据库模型和操作"""
 import sqlite3
-import json
-import hashlib
-import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-
 
 class PodcastDatabase:
     """Podcast数据库操作类"""
@@ -46,55 +42,48 @@ class PodcastDatabase:
             ON podcasts(timestamp)
         """)
         
+        # 创建segments表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                podcast_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                start REAL NOT NULL,
+                end REAL NOT NULL,
+                translation TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (podcast_id) REFERENCES podcasts(id) ON DELETE CASCADE
+            )
+        """)
+        
+        # 创建segments索引
+        # 复合索引：优化按podcast_id查询并按start排序的性能
+        # 这个索引可以同时用于：
+        # 1. WHERE podcast_id = ? (使用索引前缀)
+        # 2. WHERE podcast_id = ? ORDER BY start (完美匹配)
+        # 3. DELETE FROM segments WHERE podcast_id = ? (使用索引前缀)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_segments_podcast_id_start 
+            ON segments(podcast_id, start)
+        """)
+        
         conn.commit()
         conn.close()
     
-    def _generate_id(self, company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
-        """
-        生成唯一ID，基于内容的hash
-        
-        使用 company + channel + timestamp + audioURL + title 的hash值
-        这样相同内容的podcast会生成相同的ID，便于去重
-        
-        Args:
-            company: 公司名称
-            channel: 频道名称
-            timestamp: 时间戳
-            audio_url: 音频URL
-            title: 标题（可选）
-            
-        Returns:
-            生成的32位hash ID
-        """
-        # 规范化输入
-        normalized_company = (company or "").strip().lower()
-        normalized_channel = (channel or "").strip().lower()
-        normalized_title = (title or "").strip().lower()
-        normalized_url = (audio_url or "").strip()
-        
-        # 组合内容生成hash
-        content = f"{normalized_company}|{normalized_channel}|{timestamp}|{normalized_url}|{normalized_title}"
-        hash_obj = hashlib.sha256(content.encode('utf-8'))
-        return hash_obj.hexdigest()[:32]  # 使用32位hash作为ID
-    
     def insert_podcast(self, podcast_data: Dict[str, Any]) -> str:
         """
-        插入或更新podcast数据
+        插入或更新podcast数据（包含segments）
         
         Args:
-            podcast_data: 包含podcast信息的字典
+            podcast_data: 包含podcast信息的字典，可以包含segments字段
             
         Returns:
             podcast的ID
         """
-        # 生成ID（基于内容，相同内容会生成相同ID）
-        podcast_id = self._generate_id(
-            company=podcast_data['company'],
-            channel=podcast_data['channel'],
-            timestamp=podcast_data['timestamp'],
-            audio_url=podcast_data['audioURL'],
-            title=podcast_data.get('title')
-        )
+        # id 由客户端提供
+        if 'id' not in podcast_data:
+            raise ValueError('podcast_data必须包含id字段')
+        podcast_id = podcast_data['id']
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -117,25 +106,60 @@ class PodcastDatabase:
             datetime.now().isoformat()
         ))
         
+        # 如果有segments，插入segments
+        segments = podcast_data.get('segments', [])
+        if segments:
+            # 先删除旧的segments
+            cursor.execute("DELETE FROM segments WHERE podcast_id = ?", (podcast_id,))
+            # 插入新的segments（使用自增ID，不指定id字段）
+            for segment in segments:
+                cursor.execute("""
+                    INSERT INTO segments (podcast_id, text, start, end, translation)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    podcast_id,
+                    segment.get('text', ''),
+                    segment.get('start', 0.0),
+                    segment.get('end', 0.0),
+                    segment.get('translation')
+                ))
+        
         conn.commit()
         conn.close()
         
         return podcast_id
     
     def get_podcast_by_id(self, podcast_id: str) -> Optional[Dict[str, Any]]:
-        """根据ID获取podcast"""
+        """根据ID获取podcast（包含segments）"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
         cursor.execute("SELECT * FROM podcasts WHERE id = ?", (podcast_id,))
         row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return None
+        result = dict(row)
+        # 获取segments
+        cursor.execute("""
+            SELECT id, text, start, end, translation 
+            FROM segments 
+            WHERE podcast_id = ? 
+            ORDER BY start ASC
+        """, (podcast_id,))
+        segment_rows = cursor.fetchall()
+        result['segments'] = [
+            {
+                'id': seg['id'],
+                'text': seg['text'],
+                'start': seg['start'],
+                'end': seg['end'],
+                'translation': seg['translation']
+            }
+            for seg in segment_rows
+        ]
         conn.close()
-        
-        if row:
-            result = dict(row)
-            return result
-        return None
+        return result
     
     def get_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
@@ -178,15 +202,9 @@ class PodcastDatabase:
         
         return count > 0
     
-    def generate_id(self, company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
-        return self._generate_id(company, channel, timestamp, audio_url, title)
-    
     def get_all_channels(self) -> List[Dict[str, str]]:
         """
         获取所有的podcast频道（company + channel组合）
-        
-        Returns:
-            包含company和channel的字典列表
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

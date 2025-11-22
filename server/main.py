@@ -1,17 +1,14 @@
 """Podcast Service - FastAPI服务"""
 import os
-from datetime import datetime
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Query, APIRouter
+from fastapi import FastAPI, HTTPException, Query, APIRouter, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing import List, Dict, Any
 from .database import PodcastDatabase
-from .npr_service import NPRService
 
-# 创建FastAPI应用
 app = FastAPI(
     title='Podcast Service',
-    description='Podcast音频拉取和存储服务（支持NPR All Things Considered等）',
+    description='Podcast数据存储和查询服务',
     version='1.0.0',
 )
 
@@ -26,85 +23,26 @@ app.add_middleware(
 # 路由都以 /podcast 为前缀
 router = APIRouter(prefix="/podcast", tags=["podcast"])
 
-# 初始化数据库和NPR服务
+# 初始化数据库
 db_path = os.getenv("DB_PATH", "podcasts.db")
 db = PodcastDatabase(db_path=db_path)
-npr_service = NPRService()
 
-@router.get('/npr/atc')
-async def fetch_npr_atc(
-    days: Optional[int] = Query(None, description='前几天的数据总和，不传等价于传1（昨天）'),
-    store: bool = Query(True, description='是否存储到数据库，默认为True')
-):
-
-    try:
-        # 解析天数参数（统一使用UTC时区）
-        from datetime import timezone, timedelta
-        # 默认值为1（昨天）
-        if days is None:
-            days = 1
-
-        if days < 1:
-            raise HTTPException(status_code=400, detail='days参数必须大于等于1')
-        if days > 30:
-            raise HTTPException(status_code=400, detail='days参数不能超过30')
-        print(f'[podcast-service] 开始拉取NPR All Things Considered（前{days}天）')
-        
-        all_episodes = await npr_service.fetch_episodes_by_days(days)
-
-        if not all_episodes:
-            return JSONResponse({
-                'success': True,
-                'message': f'未找到前{days}天的节目',
-                'count': 0,
-                'episodes': []
-            })
-        
-        # 存储到数据库（如果需要）
-        stored_podcasts = []
-        if store:
-            for episode in all_episodes:
-                try:
-                    podcast_id = db.insert_podcast(episode)
-                    stored_podcast = db.get_podcast_by_id(podcast_id)
-                    if stored_podcast:
-                        stored_podcasts.append(stored_podcast)
-                except Exception as e:
-                    print(f'[podcast-service] 存储podcast失败: {e}')
-        else:
-            for episode in all_episodes:
-                episode['id'] = db.generate_id(
-                    company=episode['company'],
-                    channel=episode['channel'],
-                    timestamp=episode['timestamp'],
-                    audio_url=episode['audioURL'],
-                    title=episode.get('title')
-                )
-            stored_podcasts = all_episodes
-        
-        print(f'[podcast-service] 成功拉取 {"并存储" if store else ""} {len(stored_podcasts)}/{len(all_episodes)} 个episodes')
-        
-        return JSONResponse({
-            'success': True,
-            'message': f'成功拉取{"并存储" if store else ""}{len(stored_podcasts)}个episodes',
-            'count': len(stored_podcasts),
-            'stored': store,
-            'episodes': [
-                {
-                    'id': podcast.get('id'),
-                    'title': podcast.get('title'),
-                    'audioURL': podcast.get('audioURL'),
-                    'timestamp': podcast.get('timestamp'),
-                    'subtitle': podcast.get('subtitle')
-                }
-                for podcast in stored_podcasts
-            ]
-        })
-    except HTTPException:
-        raise
-    except Exception as error:
-        print(f'[podcast-service] 拉取NPR All Things Considered失败: {error}')
-        raise HTTPException(status_code=500, detail=f'拉取失败: {str(error)}')
+def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
+    """
+    验证并插入单个podcast的内部函数
+    
+    Returns:
+        (podcast_id, success) 元组
+    """
+    # 验证必需字段
+    required_fields = ['company', 'channel', 'audioURL', 'timestamp']
+    missing_fields = [f for f in required_fields if f not in podcast]
+    if missing_fields:
+        raise ValueError(f'缺少必需字段: {missing_fields}')
+    
+    # 存储podcast（包含segments）
+    podcast_id = db.insert_podcast(podcast)
+    return podcast_id, True
 
 
 @router.get('/query')
@@ -191,7 +129,7 @@ async def get_channel_podcasts(
 @router.get('/detail/{podcast_id}')
 async def get_podcast_detail_by_id(podcast_id: str):
     """
-    根据ID获取podcast详情
+    根据ID获取podcast详情（包含segments）
     """
     try:
         podcast = db.get_podcast_by_id(podcast_id)
@@ -209,6 +147,104 @@ async def get_podcast_detail_by_id(podcast_id: str):
     except Exception as error:
         print(f'[podcast-service] 查询podcast失败: {error}')
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
+
+
+@router.post('/upload')
+async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
+    """
+    上传完整的podcast数据（包含segments）
+    
+    请求体格式:
+    {
+        "id": "podcast_id",
+        "company": "NPR",
+        "channel": "All Things Considered",
+        "audioURL": "https://...",
+        "title": "Title",
+        "subtitle": "Description",
+        "timestamp": 1234567890,
+        "language": "en",
+        "duration": 3600,
+        "segments": [
+            {
+                "id": "segment_id",
+                "text": "Original text",
+                "start": 2.444,
+                "end": 5.329,
+                "translation": "翻译文本"
+            }
+        ]
+    }
+    """
+    try:
+        podcast_id, _ = _validate_and_insert_podcast(podcast)
+        print(f'[podcast-service] 成功上传podcast: {podcast_id} - {podcast.get("title", "Unknown")}')
+        return JSONResponse({
+            'success': True,
+            'message': 'Podcast上传成功',
+            'id': podcast_id,
+            'segments_count': len(podcast.get('segments', []))
+        })
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[podcast-service] 上传podcast失败: {error}')
+        raise HTTPException(status_code=500, detail=f'上传失败: {str(error)}')
+
+
+@router.post('/upload/batch')
+async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
+    """
+    批量上传podcasts（包含segments）
+    请求体格式:
+    [
+        {
+            "id": "podcast_id",
+            "company": "NPR",
+            ...
+            "segments": [...]
+        },
+        ...
+    ]
+    """
+    try:
+        if not podcasts:
+            raise HTTPException(status_code=400, detail='podcasts列表不能为空')
+        success_count = 0
+        fail_count = 0
+        failed_ids = []
+        for podcast in podcasts:
+            try:
+                podcast_id, _ = _validate_and_insert_podcast(podcast)
+                success_count += 1
+                print(f'[podcast-service] 成功上传podcast: {podcast_id}')
+            except ValueError as e:
+                fail_count += 1
+                podcast_id = podcast.get('id', 'unknown')
+                failed_ids.append(podcast_id)
+                print(f'[podcast-service] 跳过podcast ({podcast_id}): {e}')
+            except Exception as e:
+                fail_count += 1
+                podcast_id = podcast.get('id', 'unknown')
+                failed_ids.append(podcast_id)
+                print(f'[podcast-service] 上传podcast失败 ({podcast_id}): {e}')
+        
+        return JSONResponse({
+            'success': True,
+            'message': f'批量上传完成：成功 {success_count}，失败 {fail_count}',
+            'success_count': success_count,
+            'fail_count': fail_count,
+            'total': len(podcasts),
+            'failed_ids': failed_ids
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[podcast-service] 批量上传失败: {error}')
+        raise HTTPException(status_code=500, detail=f'批量上传失败: {str(error)}')
 
 
 # 注册路由

@@ -1,6 +1,8 @@
 # Server Service
 
-统一的 server 服务，提供 Podcast 音频拉取和存储功能。
+统一的 server 服务，提供 Podcast 数据存储和查询功能。
+
+**注意**：Podcast 抓取功能已移至 `local/` 目录，server 端只负责接收和存储已处理的数据。
 
 ## 📋 目录
 
@@ -285,11 +287,15 @@ sudo supervisorctl start languageflow
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/` | GET | 服务信息和端点列表 |
-| `/health` | GET | 健康检查 |
-| `/api/podcasts/npr/atc` | GET | 拉取 NPR All Things Considered 音频 |
-| `/api/podcasts` | GET | 查询已存储的 podcasts |
-| `/api/podcasts/{id}` | GET | 根据 ID 获取 podcast 详情 |
+| `/podcast/channels` | GET | 获取所有频道列表 |
+| `/podcast/channels/{company}/{channel}/dates` | GET | 获取频道日期列表 |
+| `/podcast/channels/{company}/{channel}/podcasts` | GET | 获取频道某日期的podcasts |
+| `/podcast/detail/{podcast_id}` | GET | 根据ID获取podcast详情（包含segments） |
+| `/podcast/upload` | POST | 上传单个podcast（包含segments） |
+| `/podcast/upload/batch` | POST | 批量上传podcasts（包含segments） |
 | `/docs` | GET | API 文档（Swagger UI） |
+
+**注意**：Podcast 抓取和转录功能在 `local/` 目录中处理，然后通过 `/podcast/upload` 接口上传到服务器。
 
 ---
 
