@@ -10,68 +10,113 @@ import AVFoundation
 import AVFAudio
 
 struct PodcastLearningView: View {
-    @State private var store: PodcastLearningStore
-
-    init(podcast: Podcast) {
-        _store = State(initialValue: PodcastLearningStore(podcast: podcast))
-    }
+    let podcastId: String
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var store: PodcastLearningStore?
 
     var body: some View {
-        @Bindable var store = store
-        NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        PodcastHeroHeader(podcast: store.podcast)
-                        SegmentListView(store: store)
+        Group {
+            if isLoading {
+                ProgressView("加载中...")
+            } else if let error = errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    Text("加载失败")
+                        .font(.headline)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("重试") {
+                        loadPodcast()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 44)
+                    .buttonStyle(.borderedProminent)
                 }
-                .background(Color(.systemGroupedBackground))
-                .onChange(of: store.currentSegmentID) { _, newValue in
-                    guard let id = newValue else { return }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        proxy.scrollTo(id, anchor: .center)
+                .padding()
+            } else if let store = store {
+                NavigationStack {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                PodcastHeroHeader(podcast: store.podcast)
+                                SegmentListView(store: store)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 44)
+                        }
+                        .background(Color(.systemGroupedBackground))
+                        .onChange(of: store.currentSegmentID) { _, newValue in
+                            guard let id = newValue else { return }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
+                        }
+                        .safeAreaInset(edge: .bottom) {
+                            GlobalPlaybackBar(
+                                title: store.podcast.title ?? "Podcast",
+                                subtitle: store.podcast.subtitle ?? "",
+                                isPlaying: store.isGlobalPlaying,
+                                playbackRate: store.globalPlaybackRate,
+                                progressBinding: Binding(
+                                    get: {
+                                        guard store.totalDuration > 0 else { return 0 }
+                                        return min(max(store.currentTime / store.totalDuration, 0), 1)
+                                    },
+                                    set: { store.jumpTo(progress: $0) }
+                                ),
+                                currentTime: store.currentTime,
+                                duration: store.totalDuration,
+                                onTogglePlay: store.toggleGlobalPlayback,
+                                onChangeRate: store.changeGlobalPlaybackRate,
+                                onSeekEditingChanged: store.handleSeekEditingChanged,
+                                isFavorited: store.isGlobalFavorited,
+                                onToggleFavorite: store.toggleGlobalFavorite,
+                                isLooping: store.isLooping,
+                                areTranslationsHidden: store.areTranslationsHidden,
+                                onToggleLoopMode: store.toggleLoopMode,
+                                onToggleTranslations: store.toggleTranslationVisibility
+                            )
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color.clear.ignoresSafeArea())
+                        }
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Image(systemName: "fish.fill")
+                                .font(.system(size: 15))
+                        }
                     }
                 }
-                .safeAreaInset(edge: .bottom) {
-                    GlobalPlaybackBar(
-                        title: store.podcast.title ?? "Podcast",
-                        subtitle: store.podcast.subtitle ?? "",
-                        isPlaying: store.isGlobalPlaying,
-                        playbackRate: store.globalPlaybackRate,
-                        progressBinding: Binding(
-                            get: {
-                                guard store.totalDuration > 0 else { return 0 }
-                                return min(max(store.currentTime / store.totalDuration, 0), 1)
-                            },
-                            set: { store.jumpTo(progress: $0) }
-                        ),
-                        currentTime: store.currentTime,
-                        duration: store.totalDuration,
-                        onTogglePlay: store.toggleGlobalPlayback,
-                        onChangeRate: store.changeGlobalPlaybackRate,
-                        onSeekEditingChanged: store.handleSeekEditingChanged,
-                        isFavorited: store.isGlobalFavorited,
-                        onToggleFavorite: store.toggleGlobalFavorite,
-                        isLooping: store.isLooping,
-                        areTranslationsHidden: store.areTranslationsHidden,
-                        onToggleLoopMode: store.toggleLoopMode,
-                        onToggleTranslations: store.toggleTranslationVisibility
-                    )
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.clear.ignoresSafeArea())
-                }
+            } else {
+                Text("未找到Podcast")
+                    .foregroundColor(.secondary)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Image(systemName: "fish.fill")
-                        .font(.system(size: 15))
-                }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loadPodcast()
+        }
+    }
+    
+    private func loadPodcast() {
+        Task {
+            isLoading = true
+            errorMessage = nil
+            
+            do {
+                let loadedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
+                store = PodcastLearningStore(podcast: loadedPodcast)
+            } catch {
+                errorMessage = error.localizedDescription
+                print("加载podcast详情失败: \(error)")
             }
+            
+            isLoading = false
         }
     }
 }
@@ -518,8 +563,4 @@ final class PodcastLearningStore {
         }
         return podcast.segments.last(where: { $0.start <= time }) ?? podcast.segments.first
     }
-}
-
-#Preview {
-    PodcastLearningView(podcast: .sample)
 }

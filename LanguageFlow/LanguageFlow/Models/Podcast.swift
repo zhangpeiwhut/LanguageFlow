@@ -21,33 +21,6 @@ struct PodcastSummary: Codable, Identifiable {
     let duration: Int?
 }
 
-struct PodcastItem: Codable, Identifiable {
-    let id: String
-    let company: String
-    let channel: String
-    let audioURL: String
-    let title: String?
-    let subtitle: String?
-    let timestamp: Int
-    let language: String
-
-    var dateString: String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-
-    var formattedDate: String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-}
-
-
 struct Podcast: Codable, Identifiable {
     let id: String
     let audioURL: String
@@ -59,7 +32,7 @@ struct Podcast: Codable, Identifiable {
     let status: Status?
 
     struct Segment: Identifiable, Codable {
-        let id: String
+        let id: Int
         let text: String
         let start: TimeInterval
         let end: TimeInterval
@@ -72,8 +45,4 @@ struct Podcast: Codable, Identifiable {
         var bestScore: Int?
         var customPlaybackRate: Double?
     }
-}
-
-extension Podcast {
-    static var sample: Podcast { SamplePodcastLoader.load() }
 }

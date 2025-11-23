@@ -14,10 +14,10 @@ struct ContentView: View {
                 .tabItem {
                     Label("频道", systemImage: "radio")
                 }
-            
-            PodcastLearningView(podcast: .sample)
+
+            FavoritesView()
                 .tabItem {
-                    Label("学习", systemImage: "book")
+                    Label("收藏", systemImage: "heart.fill")
                 }
         }
     }

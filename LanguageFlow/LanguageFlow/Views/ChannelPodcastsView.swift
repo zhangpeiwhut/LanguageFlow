@@ -44,21 +44,20 @@ struct ChannelPodcastsView: View {
                 }
             } else {
                 List(podcasts) { podcast in
-//                    NavigationLink(destination: PodcastDetailView(podcastId: podcast.id)) {
-//
-//                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let title = podcast.title {
-                            Text(title)
-                                .font(.headline)
-                                .lineLimit(2)
-                        } else {
-                            Text("无标题")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
+                    NavigationLink(destination: PodcastLearningView(podcastId: podcast.id)) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let title = podcast.title {
+                                Text(title)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                            } else {
+                                Text("无标题")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }

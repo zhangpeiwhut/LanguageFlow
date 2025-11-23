@@ -10,9 +10,9 @@ import Alamofire
 
 class PodcastAPI {
     static let shared = PodcastAPI()
-    
+
     private let baseURL: String
-    
+
     init(baseURL: String = "https://elegantfish.online/podcast") {
         self.baseURL = baseURL
     }
@@ -51,7 +51,7 @@ class PodcastAPI {
         .podcasts
     }
 
-    func getPodcastDetailById(_ id: String) async throws -> PodcastItem {
+    func getPodcastDetailById(_ id: String) async throws -> Podcast {
         return try await AF.request(
             "\(baseURL)/detail/\(id)",
             method: .get
@@ -88,6 +88,6 @@ struct ChannelPodcastsResponse: Codable {
 
 nonisolated
 struct PodcastDetailResponse: Codable {
-    let podcast: PodcastItem
+    let podcast: Podcast
 }
 
