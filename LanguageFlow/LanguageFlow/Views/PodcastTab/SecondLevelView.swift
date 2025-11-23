@@ -11,9 +11,11 @@ struct SecondLevelView: View {
     @State private var timestamps: [Int] = []
     @State private var selectedTimestamp: Int?
     @State private var podcasts: [PodcastSummary] = []
+    @State private var presentingPodcast: PodcastSummary?
     @State private var isLoadingDates = false
     @State private var isLoadingPodcasts = false
     @State private var errorMessage: String?
+    @State private var areTranslationsHidden = true
 
     var body: some View {
         Group {
@@ -36,119 +38,114 @@ struct SecondLevelView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if timestamps.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "calendar")
-                        .font(.largeTitle)
-                        .foregroundColor(.secondary)
-                    Text("暂无内容")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                }
             } else {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // 日期选择器
-                        Menu {
-                            ForEach(timestamps, id: \.self) { timestamp in
-                                Button(action: {
-                                    selectedTimestamp = timestamp
-                                }) {
-                                    HStack {
-                                        Text(formatDate(timestamp))
-                                        if selectedTimestamp == timestamp {
-                                            Image(systemName: "checkmark")
-                                        }
+                VStack(spacing: 0) {
+                    dateSelector
+                    Divider()
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            if isLoadingPodcasts {
+                                LoadingIndicator(animation: .fiveLines)
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                WaterfallGrid(items: podcasts, spacing: 14) { podcast in
+                                    Button {
+                                        presentingPodcast = podcast
+                                    } label: {
+                                        PodcastCardView(
+                                            podcast: podcast,
+                                            showTranslation: !areTranslationsHidden,
+                                            durationText: formatDurationMinutes(podcast.duration),
+                                            segmentText: formatSegmentCount(podcast.segmentCount)
+                                        )
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "calendar")
-                                    .foregroundColor(.blue)
-
-                                if let timestamp = selectedTimestamp {
-                                    Text(formatDate(timestamp))
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.primary)
-                                } else {
-                                    Text("选择日期")
-                                        .font(.body)
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.down")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding()
-                            .background(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            )
-                        }
-
-                        // 播客网格
-                        if isLoadingPodcasts {
-                            LoadingIndicator(animation: .fiveLines)
-                                .frame(height: 200)
-                        } else if podcasts.isEmpty {
-                            VStack(spacing: 16) {
-                                Image(systemName: "waveform")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                                Text("暂无Podcast")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                            }
-                            .frame(height: 200)
-                        } else {
-                            LazyVGrid(columns: [
-                                GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)
-                            ], spacing: 12) {
-                                ForEach(podcasts) { podcast in
-                                    NavigationLink(destination: PodcastLearningView(podcastId: podcast.id)) {
-                                        PodcastCardView(podcast: podcast)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
+                                .animation(.easeInOut(duration: 0.3), value: areTranslationsHidden)
                             }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                        .padding(.bottom, 32)
                     }
-                    .padding()
+                    .background(Color(uiColor: .systemGroupedBackground))
                 }
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle(channel.channel)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        areTranslationsHidden.toggle()
+                    }
+                } label: {
+                    Image(systemName: areTranslationsHidden ? "lightbulb.slash" : "lightbulb")
+                        .font(.system(size: 14))
+                }
+            }
+        }
         .task {
             loadDates()
         }
-        .onChange(of: selectedTimestamp) { oldValue, newValue in
-            if let timestamp = newValue {
-                loadPodcasts(for: timestamp)
-            }
+        .onChange(of: selectedTimestamp) { _, newValue in
+            guard let newValue else { return }
+            loadPodcasts(for: newValue)
+        }
+        .fullScreenCover(item: $presentingPodcast) { podcast in
+            PodcastLearningView(podcastId: podcast.id)
         }
     }
 
-    private func loadDates() {
+    private var dateSelector: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(timestamps, id: \.self) { timestamp in
+                    let label = formatDateLabel(timestamp)
+                    Button {
+                        selectedTimestamp = timestamp
+                    } label: {
+                        Text(label)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(selectedTimestamp == timestamp ? .accentColor : .primary)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .frame(minWidth: 60)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(selectedTimestamp == timestamp ? Color.accentColor.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(selectedTimestamp == timestamp ? Color.accentColor : Color.gray.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+}
+
+private extension SecondLevelView {
+    func loadDates() {
         guard timestamps.isEmpty else { return }
-        Task {
+        Task { @MainActor in
             isLoadingDates = true
             errorMessage = nil
-
             do {
                 timestamps = try await PodcastAPI.shared.getChannelDates(
                     company: channel.company,
                     channel: channel.channel
                 )
-
-                // 默认选择最新日期（第一个）
+                timestamps = Array(timestamps.prefix(7))
                 if let firstTimestamp = timestamps.first {
                     selectedTimestamp = firstTimestamp
                 }
@@ -156,15 +153,13 @@ struct SecondLevelView: View {
                 errorMessage = error.localizedDescription
                 print("加载日期失败: \(error)")
             }
-
             isLoadingDates = false
         }
     }
 
-    private func loadPodcasts(for timestamp: Int) {
-        Task {
+    func loadPodcasts(for timestamp: Int) {
+        Task { @MainActor in
             isLoadingPodcasts = true
-
             do {
                 podcasts = try await PodcastAPI.shared.getChannelPodcasts(
                     company: channel.company,
@@ -180,56 +175,109 @@ struct SecondLevelView: View {
         }
     }
 
-    private func formatDate(_ timestamp: Int) -> String {
+    func formatDateLabel(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
+        formatter.dateFormat = "MMM d"
         return formatter.string(from: date)
+    }
+
+    func formatDurationMinutes(_ duration: Int?) -> String {
+        guard let duration else { return "0分钟" }
+        let minutes = max(Int(round(Double(duration) / 60.0)), 1)
+        return "\(minutes)分钟"
+    }
+
+    func formatSegmentCount(_ count: Int?) -> String {
+        guard let count else { return "0句" }
+        return "\(count)句"
+    }
+}
+
+// MARK: - Waterfall Grid
+struct WaterfallGrid<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
+    private let items: Data
+    private let content: (Data.Element) -> Content
+    private let spacing: CGFloat
+
+    init(items: Data, spacing: CGFloat = 12, @ViewBuilder content: @escaping (Data.Element) -> Content) {
+        self.items = items
+        self.content = content
+        self.spacing = spacing
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: spacing) {
+            LazyVStack(spacing: spacing) {
+                ForEach(leftColumn) { item in
+                    content(item)
+                }
+            }
+            LazyVStack(spacing: spacing) {
+                ForEach(rightColumn) { item in
+                    content(item)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var leftColumn: [Data.Element] {
+        items.enumerated().compactMap { index, element in
+            index.isMultiple(of: 2) ? element : nil
+        }
+    }
+
+    private var rightColumn: [Data.Element] {
+        items.enumerated().compactMap { index, element in
+            index.isMultiple(of: 2) ? nil : element
+        }
     }
 }
 
 // MARK: - Podcast Card
 struct PodcastCardView: View {
     let podcast: PodcastSummary
+    let showTranslation: Bool
+    let durationText: String
+    let segmentText: String
+
+    private var displayTitle: String {
+        if showTranslation {
+            return stripTrailingPeriod(podcast.titleTranslation ?? podcast.title ?? "无标题")
+        }
+        return stripTrailingPeriod(podcast.title ?? podcast.titleTranslation ?? "无标题")
+    }
+
+    private func stripTrailingPeriod(_ text: String) -> String {
+        var result = text
+        while let last = result.last, last == "." || last == "。" {
+            result.removeLast()
+        }
+        return result
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // 顶部图标
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.1))
-                    .frame(width: 60, height: 60)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(displayTitle)
+                .font(.headline)
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
 
-                Image(systemName: "waveform")
-                    .font(.title2)
-                    .foregroundColor(.blue)
-            }
-
-            // 标题
-            if let title = podcast.title {
-                Text(title)
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("无标题")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-            }
+            Text("\(durationText) • \(segmentText)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding()
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
         )
     }
 }

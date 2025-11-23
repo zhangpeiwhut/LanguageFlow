@@ -6,11 +6,12 @@ struct SegmentListView: View {
     @Bindable var store: PodcastLearningStore
 
     var body: some View {
-        LazyVStack(spacing: 16) {
+        LazyVStack(spacing: 12) {
             ForEach(Array(store.podcast.segments.enumerated()), id: \.element.id) { index, segment in
                 SegmentPracticeCard(
                     segment: segment,
                     segmentNumber: index + 1,
+                    totalSegments: max(store.podcast.segments.count, 1),
                     state: Binding(
                         get: { store.segmentStates[segment.id] ?? SegmentPracticeState() },
                         set: { store.segmentStates[segment.id] = $0 }
@@ -19,7 +20,6 @@ struct SegmentListView: View {
                     areTranslationsHidden: store.areTranslationsHidden,
                     onPlay: { store.togglePlay(for: segment) },
                     onFavorite: { store.toggleFavorite(for: segment) },
-                    onScore: { store.score(segment: segment) },
                     onRateChange: { rate in store.updatePlaybackRate(rate, for: segment) },
                     onAttemptChange: { text in store.updateAttempt(text, for: segment) },
                     onToggleTranslation: { store.toggleTranslation(for: segment) }
@@ -34,25 +34,27 @@ struct SegmentListView: View {
 private struct SegmentPracticeCard: View {
     let segment: Podcast.Segment
     let segmentNumber: Int
+    let totalSegments: Int
     @Binding var state: SegmentPracticeState
     let isActive: Bool
     let areTranslationsHidden: Bool
     let onPlay: () -> Void
     let onFavorite: () -> Void
-    let onScore: () -> Void
     let onRateChange: (Double) -> Void
     let onAttemptChange: (String) -> Void
     let onToggleTranslation: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(segmentNumber). " + segment.text)
+            numberTag()
+            
+            Text(segment.text)
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if let translation = segment.translation {
-                Text("\(segmentNumber). " + translation)
+                Text(translation)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,7 +74,6 @@ private struct SegmentPracticeCard: View {
                 isFavorited: state.isFavorited,
                 playbackRate: state.playbackRate,
                 onFavorite: onFavorite,
-                onScore: onScore,
                 onRateChange: onRateChange
             )
         }
@@ -90,6 +91,20 @@ private struct SegmentPracticeCard: View {
             onPlay()
         }
     }
+    
+    @ViewBuilder
+    private func numberTag() -> some View {
+        Text("\(segmentNumber)/\(totalSegments)")
+            .font(.caption.bold())
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.secondarySystemFill))
+            )
+    }
 }
 
 private struct SegmentPracticeControls: View {
@@ -97,7 +112,6 @@ private struct SegmentPracticeControls: View {
     let isFavorited: Bool
     let playbackRate: Double
     let onFavorite: () -> Void
-    let onScore: () -> Void
     let onRateChange: (Double) -> Void
     
     private let rateOptions: [Double] = [0.75, 1.0, 1.25]

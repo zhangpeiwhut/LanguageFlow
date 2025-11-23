@@ -11,93 +11,116 @@ import AVFAudio
 
 struct PodcastLearningView: View {
     let podcastId: String
+    @Environment(\.dismiss) private var dismiss
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var store: PodcastLearningStore?
 
+    private var backButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView("加载中...")
-            } else if let error = errorMessage {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text("加载失败")
-                        .font(.headline)
-                    Text(error)
-                        .font(.caption)
+        ZStack(alignment: .topLeading) {
+            Group {
+                if isLoading {
+                    ProgressView("加载中...")
+                } else if let error = errorMessage {
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                            .foregroundColor(.orange)
+                        Text("加载失败")
+                            .font(.headline)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("重试") {
+                            loadPodcast()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                } else if let store = store {
+                    VStack(spacing: 0) {
+                        HStack(alignment: .center, spacing: 10) {
+                            backButton
+                            Text(store.podcast.title ?? "Podcast")
+                                .font(.headline.weight(.semibold))
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+                        .background(.ultraThinMaterial)
+                        
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    SegmentListView(store: store)
+                                }
+                                .padding(.top, 8)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 44)
+                            }
+                            .background(Color(.systemGroupedBackground))
+                            .onChange(of: store.currentSegmentID) { _, newValue in
+                                guard let id = newValue else { return }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    proxy.scrollTo(id, anchor: .center)
+                                }
+                            }
+                            .safeAreaInset(edge: .bottom) {
+                                GlobalPlaybackBar(
+                                    title: store.podcast.title ?? "Podcast",
+                                    subtitle: store.podcast.subtitle ?? "",
+                                    isPlaying: store.isGlobalPlaying,
+                                    playbackRate: store.globalPlaybackRate,
+                                    progressBinding: Binding(
+                                        get: {
+                                            guard store.totalDuration > 0 else { return 0 }
+                                            return min(max(store.currentTime / store.totalDuration, 0), 1)
+                                        },
+                                        set: { store.jumpTo(progress: $0) }
+                                    ),
+                                    currentTime: store.currentTime,
+                                    duration: store.totalDuration,
+                                    onTogglePlay: store.toggleGlobalPlayback,
+                                    onChangeRate: store.changeGlobalPlaybackRate,
+                                    onSeekEditingChanged: store.handleSeekEditingChanged,
+                                    isFavorited: store.isGlobalFavorited,
+                                    onToggleFavorite: store.toggleGlobalFavorite,
+                                    isLooping: store.isLooping,
+                                    areTranslationsHidden: store.areTranslationsHidden,
+                                    onToggleLoopMode: store.toggleLoopMode,
+                                    onToggleTranslations: store.toggleTranslationVisibility
+                                )
+                                .padding(.horizontal)
+                                .padding(.vertical, 8)
+                                .background(Color.clear.ignoresSafeArea())
+                            }
+                        }
+                    }
+                } else {
+                    Text("未找到Podcast")
                         .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("重试") {
-                        loadPodcast()
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
-                .padding()
-            } else if let store = store {
-                NavigationStack {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 16) {
-                                PodcastHeroHeader(podcast: store.podcast)
-                                SegmentListView(store: store)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 44)
-                        }
-                        .background(Color(.systemGroupedBackground))
-                        .onChange(of: store.currentSegmentID) { _, newValue in
-                            guard let id = newValue else { return }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                proxy.scrollTo(id, anchor: .center)
-                            }
-                        }
-                        .safeAreaInset(edge: .bottom) {
-                            GlobalPlaybackBar(
-                                title: store.podcast.title ?? "Podcast",
-                                subtitle: store.podcast.subtitle ?? "",
-                                isPlaying: store.isGlobalPlaying,
-                                playbackRate: store.globalPlaybackRate,
-                                progressBinding: Binding(
-                                    get: {
-                                        guard store.totalDuration > 0 else { return 0 }
-                                        return min(max(store.currentTime / store.totalDuration, 0), 1)
-                                    },
-                                    set: { store.jumpTo(progress: $0) }
-                                ),
-                                currentTime: store.currentTime,
-                                duration: store.totalDuration,
-                                onTogglePlay: store.toggleGlobalPlayback,
-                                onChangeRate: store.changeGlobalPlaybackRate,
-                                onSeekEditingChanged: store.handleSeekEditingChanged,
-                                isFavorited: store.isGlobalFavorited,
-                                onToggleFavorite: store.toggleGlobalFavorite,
-                                isLooping: store.isLooping,
-                                areTranslationsHidden: store.areTranslationsHidden,
-                                onToggleLoopMode: store.toggleLoopMode,
-                                onToggleTranslations: store.toggleTranslationVisibility
-                            )
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.clear.ignoresSafeArea())
-                        }
-                    }
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .principal) {
-                            Image(systemName: "fish.fill")
-                                .font(.system(size: 15))
-                        }
-                    }
-                }
-            } else {
-                Text("未找到Podcast")
-                    .foregroundColor(.secondary)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
         .task {
             loadPodcast()
         }
@@ -134,7 +157,6 @@ final class PodcastLearningStore {
     var areTranslationsHidden = false
 
     @ObservationIgnored private var playbackTimer: AnyCancellable?
-    @ObservationIgnored private let scorer = SimilarityScorer()
     @ObservationIgnored private var audioPlayer: AVPlayer?
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var playbackFinishedObserver: AnyCancellable?
@@ -261,12 +283,6 @@ final class PodcastLearningStore {
     func updateAttempt(_ text: String, for segment: Podcast.Segment) {
         var state = currentState(for: segment)
         state.recognizedAttempt = text
-        segmentStates[segment.id] = state
-    }
-
-    func score(segment: Podcast.Segment) {
-        var state = currentState(for: segment)
-        state.lastScore = scorer.score(reference: segment.text, attempt: state.recognizedAttempt)
         segmentStates[segment.id] = state
     }
 
