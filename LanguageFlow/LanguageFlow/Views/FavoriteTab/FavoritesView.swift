@@ -2,8 +2,6 @@
 //  FavoritesView.swift
 //  LanguageFlow
 //
-//  收藏的Podcasts视图
-//
 
 import SwiftUI
 

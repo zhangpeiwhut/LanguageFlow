@@ -10,7 +10,7 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         TabView {
-            ChannelListView()
+            FirstLevelView()
                 .tabItem {
                     Label("频道", systemImage: "radio")
                 }

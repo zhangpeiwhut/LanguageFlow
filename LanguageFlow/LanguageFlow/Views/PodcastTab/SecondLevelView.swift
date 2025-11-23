@@ -2,12 +2,11 @@
 //  ChannelDatesView.swift
 //  LanguageFlow
 //
-//  频道日期列表视图
-//
 
 import SwiftUI
+import SwiftfulLoadingIndicators
 
-struct ChannelDatesView: View {
+struct SecondLevelView: View {
     let channel: Channel
     @State private var timestamps: [Int] = []
     @State private var isLoading = false
@@ -16,7 +15,7 @@ struct ChannelDatesView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("加载中...")
+                LoadingIndicator(animation: .fiveLines)
             } else if let error = errorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
@@ -45,7 +44,7 @@ struct ChannelDatesView: View {
                 }
             } else {
                 List(timestamps, id: \.self) { timestamp in
-                    NavigationLink(destination: ChannelPodcastsView(
+                    NavigationLink(destination: ThirdLevelView(
                         channel: channel,
                         timestamp: timestamp
                     )) {
@@ -66,6 +65,7 @@ struct ChannelDatesView: View {
     }
     
     private func loadDates() {
+        guard timestamps.isEmpty else { return }
         Task {
             isLoading = true
             errorMessage = nil
@@ -92,4 +92,3 @@ struct ChannelDatesView: View {
         return formatter.string(from: date)
     }
 }
-

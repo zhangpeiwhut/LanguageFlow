@@ -4,8 +4,9 @@
 //
 
 import SwiftUI
+import SwiftfulLoadingIndicators
 
-struct ChannelListView: View {
+struct FirstLevelView: View {
     @State private var channels: [Channel] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -14,7 +15,7 @@ struct ChannelListView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView("加载中...")
+                    LoadingIndicator(animation: .fiveLinesCenter, speed: .normal)
                 } else if let error = errorMessage {
                     VStack(spacing: 16) {
                         Image(systemName: "exclamationmark.triangle")
@@ -32,18 +33,9 @@ struct ChannelListView: View {
                         .buttonStyle(.borderedProminent)
                     }
                     .padding()
-                } else if channels.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "radio")
-                            .font(.largeTitle)
-                            .foregroundColor(.secondary)
-                        Text("暂无频道")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
                 } else {
                     List(channels) { channel in
-                        NavigationLink(destination: ChannelDatesView(channel: channel)) {
+                        NavigationLink(destination: SecondLevelView(channel: channel)) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(channel.channel)
                                     .font(.headline)
@@ -62,23 +54,22 @@ struct ChannelListView: View {
     }
     
     private func loadChannels() {
+        guard channels.isEmpty else { return }
         Task {
             isLoading = true
             errorMessage = nil
-            
             do {
                 channels = try await PodcastAPI.shared.getAllChannels()
             } catch {
                 errorMessage = error.localizedDescription
                 print("加载频道失败: \(error)")
             }
-            
             isLoading = false
         }
     }
 }
 
 #Preview {
-    ChannelListView()
+    FirstLevelView()
 }
 

@@ -4,8 +4,9 @@
 //
 
 import SwiftUI
+import SwiftfulLoadingIndicators
 
-struct ChannelPodcastsView: View {
+struct ThirdLevelView: View {
     let channel: Channel
     let timestamp: Int
     @State private var podcasts: [PodcastSummary] = []
@@ -15,7 +16,7 @@ struct ChannelPodcastsView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("加载中...")
+                LoadingIndicator(animation: .fiveLines)
             } else if let error = errorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
