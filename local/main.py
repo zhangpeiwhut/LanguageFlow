@@ -8,17 +8,12 @@ from .uploader import PodcastUploader
 async def main(days: int = 1, upload: bool = True, server_url: Optional[str] = None):
     """
     主函数：获取、处理并上传podcasts
-    
-    Args:
-        days: 获取前几天的数据，默认1（昨天）
-        upload: 是否上传到服务器，默认True（处理完一个就上传一个）
-        server_url: 服务器URL，如果不提供则从环境变量读取
     """
     print('=' * 60)
     print('Local Podcast Processor')
     print('=' * 60)
     
-    # 初始化上传器（如果需要上传）
+    # 如果需要上传，初始化上传器
     uploader = None
     if upload:
         if not server_url:
@@ -26,7 +21,7 @@ async def main(days: int = 1, upload: bool = True, server_url: Optional[str] = N
         uploader = PodcastUploader(server_url)
         print(f'\n[main] 已启用实时上传模式，处理完一个podcast就立即上传到服务器 ({server_url})')
     
-    # 获取并处理podcasts（如果提供了uploader，会实时上传）
+    # 获取并处理podcasts
     print(f'\n[main] 开始获取并处理前{days}天的podcasts...')
     processed_podcasts = await fetch_and_process_today_podcasts(days=days, uploader=uploader)
     

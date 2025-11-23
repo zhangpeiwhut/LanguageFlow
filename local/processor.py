@@ -4,7 +4,7 @@ import hashlib
 from typing import List, Dict, Any, Optional
 from .podcast_fetcher_service import PodcastFetcherService
 from .whisperx_service import transcribe_audio_url
-from .translator import translate_segments
+from .translator import translate_segments, get_translator
 
 def generate_podcast_id(company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
     normalized_company = (company or "").strip().lower()
@@ -45,7 +45,29 @@ async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
         print(f'[processor] 翻译失败: {e}')
         for segment in segments:
             if 'translation' not in segment:
-                segment['translation'] = ''    
+                segment['translation'] = ''
+    
+    title_translation = None
+    title = podcast.get('title')
+    if title:
+        try:
+            print(f'[processor] 开始翻译标题: {title}')
+            translator = await get_translator()
+            title_translations = await translator.translate_batch(
+                [title],
+                source_lang=detected_language,
+                target_lang='zh',
+                use_reflection=True,
+                use_context=False,  # 标题不需要上下文
+                use_full_context=False
+            )
+            if title_translations and title_translations[0]:
+                title_translation = title_translations[0]
+                print(f'[processor] 标题翻译完成: {title_translation}')
+            else:
+                print(f'[processor] 标题翻译为空')
+        except Exception as e:
+            print(f'[processor] 标题翻译失败: {e}')    
     podcast_id = generate_podcast_id(
         company=podcast.get('company', ''),
         channel=podcast.get('channel', ''),
@@ -59,6 +81,7 @@ async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
         'channel': podcast.get('channel', ''),
         'audioURL': audio_url,
         'title': podcast.get('title'),
+        'titleTranslation': title_translation,
         'subtitle': podcast.get('subtitle'),
         'timestamp': podcast.get('timestamp', 0),
         'language': detected_language,

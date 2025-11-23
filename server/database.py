@@ -22,6 +22,7 @@ class PodcastDatabase:
                 channel TEXT NOT NULL,
                 audioURL TEXT NOT NULL,
                 title TEXT,
+                titleTranslation TEXT,
                 subtitle TEXT,
                 timestamp INTEGER NOT NULL,
                 language TEXT NOT NULL DEFAULT 'en',
@@ -91,14 +92,15 @@ class PodcastDatabase:
         # 使用INSERT OR REPLACE来避免重复
         cursor.execute("""
             INSERT OR REPLACE INTO podcasts 
-            (id, company, channel, audioURL, title, subtitle, timestamp, language, duration, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, company, channel, audioURL, title, titleTranslation, subtitle, timestamp, language, duration, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             podcast_id,
             podcast_data['company'],
             podcast_data['channel'],
             podcast_data['audioURL'],
             podcast_data.get('title'),
+            podcast_data.get('titleTranslation'),
             podcast_data.get('subtitle'),
             podcast_data['timestamp'],
             podcast_data.get('language', 'en'),
@@ -259,11 +261,14 @@ class PodcastDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, title, duration 
-            FROM podcasts 
-            WHERE company = ? AND channel = ? 
-            AND timestamp >= ? AND timestamp < ?
-            ORDER BY timestamp DESC
+            SELECT p.id, p.title, p.titleTranslation, p.duration,
+                   COUNT(s.id) as segmentCount
+            FROM podcasts p
+            LEFT JOIN segments s ON p.id = s.podcast_id
+            WHERE p.company = ? AND p.channel = ? 
+            AND p.timestamp >= ? AND p.timestamp < ?
+            GROUP BY p.id, p.title, p.titleTranslation, p.duration
+            ORDER BY p.timestamp DESC
         """, (company, channel, start_timestamp, end_timestamp))
         
         rows = cursor.fetchall()
@@ -274,7 +279,9 @@ class PodcastDatabase:
             results.append({
                 'id': row[0],
                 'title': row[1],
-                'duration': row[2]
+                'titleTranslation': row[2],
+                'duration': row[3],
+                'segmentCount': row[4]
             })
         
         return results

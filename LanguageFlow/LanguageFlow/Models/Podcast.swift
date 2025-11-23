@@ -18,6 +18,8 @@ struct Channel: Codable, Identifiable {
 struct PodcastSummary: Codable, Identifiable {
     let id: String
     let title: String?
+    let titleTranslation: String?
+    let segmentCount: Int?
     let duration: Int?
 }
 
