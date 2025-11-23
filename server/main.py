@@ -126,6 +126,23 @@ async def get_channel_podcasts(
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
+@router.get('/check/{podcast_id}')
+async def check_podcast_complete(podcast_id: str):
+    """
+    检查podcast是否完整
+    """
+    try:
+        is_complete = db.is_podcast_complete(podcast_id)
+        return JSONResponse({
+            'success': True,
+            'exists': db.podcast_exists(podcast_id),
+            'is_complete': is_complete
+        })
+    except Exception as error:
+        print(f'[podcast-service] 检查podcast失败: {error}')
+        raise HTTPException(status_code=500, detail=f'检查失败: {str(error)}')
+
+
 @router.get('/detail/{podcast_id}')
 async def get_podcast_detail_by_id(podcast_id: str):
     """

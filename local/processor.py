@@ -15,11 +15,31 @@ def generate_podcast_id(company: str, channel: str, timestamp: int, audio_url: s
     hash_obj = hashlib.sha256(content.encode('utf-8'))
     return hash_obj.hexdigest()[:32]
 
-async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
+async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, Any]:
     audio_url = podcast.get('audioURL')
     if not audio_url:
         raise ValueError('podcast必须包含audioURL字段')
-    print(f'[processor] 开始处理podcast: {podcast.get("title", "Unknown")}')
+    
+    # 生成podcast_id用于检查
+    podcast_id = generate_podcast_id(
+        company=podcast.get('company', ''),
+        channel=podcast.get('channel', ''),
+        timestamp=podcast.get('timestamp', 0),
+        audio_url=audio_url,
+        title=podcast.get('title')
+    )
+    
+    print(f'[processor] 开始处理podcast: {podcast.get("title", "Unknown")} (ID: {podcast_id})')
+    
+    # 检查服务端是否已有完整的podcast
+    if uploader:
+        is_complete = await uploader.check_podcast_complete(podcast_id)
+        if is_complete:
+            print(f'[processor] 服务端已有完整的podcast，跳过处理：podcast ID = {podcast_id}')
+            # 返回 None 表示跳过处理
+            return None
+    
+    # 如果没有找到完整的podcast，继续正常处理流程
     try:
         transcription_result = await transcribe_audio_url(audio_url)
         segments = transcription_result.get('segments', [])
@@ -47,6 +67,7 @@ async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
             if 'translation' not in segment:
                 segment['translation'] = ''
     
+    # 翻译标题
     title_translation = None
     title = podcast.get('title')
     if title:
@@ -67,14 +88,7 @@ async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 print(f'[processor] 标题翻译为空')
         except Exception as e:
-            print(f'[processor] 标题翻译失败: {e}')    
-    podcast_id = generate_podcast_id(
-        company=podcast.get('company', ''),
-        channel=podcast.get('channel', ''),
-        timestamp=podcast.get('timestamp', 0),
-        audio_url=audio_url,
-        title=podcast.get('title')
-    )
+            print(f'[processor] 标题翻译失败: {e}')
     complete_podcast = {
         'id': podcast_id,
         'company': podcast.get('company', ''),
@@ -115,11 +129,16 @@ async def process_podcasts_batch(
     semaphore = asyncio.Semaphore(max_concurrent)
     successful = []
     failed_count = 0
+    skipped_count = 0
     
     async def process_with_semaphore(podcast):
         async with semaphore:
             try:
-                processed = await process_podcast(podcast)
+                processed = await process_podcast(podcast, uploader=uploader)
+                # 如果返回 None，说明已跳过（服务端已有完整数据）
+                if processed is None:
+                    return 'skipped'
+                
                 # 如果提供了uploader，处理完立即上传
                 if uploader:
                     print(f'[processor] 处理完成，立即上传: {processed.get("id")}')
@@ -132,18 +151,20 @@ async def process_podcasts_batch(
                 return processed
             except Exception as e:
                 print(f'[processor] 处理podcast失败: {e}')
-                return None
+                return 'failed'
     
     # 逐个处理（而不是并发），这样可以立即上传
     for i, podcast in enumerate(podcasts, 1):
         print(f'\n[processor] 处理进度: {i}/{len(podcasts)}')
         result = await process_with_semaphore(podcast)
-        if result:
-            successful.append(result)
-        else:
+        if result == 'skipped':
+            skipped_count += 1
+        elif result == 'failed':
             failed_count += 1
+        elif result:
+            successful.append(result)
     
-    print(f'\n[processor] 批量处理完成：成功 {len(successful)}/{len(podcasts)} 个，失败 {failed_count} 个')
+    print(f'\n[processor] 批量处理完成：成功 {len(successful)}/{len(podcasts)} 个，跳过 {skipped_count} 个，失败 {failed_count} 个')
     return successful
 
 async def fetch_and_process_today_podcasts(days: int = 1, uploader=None) -> List[Dict[str, Any]]:

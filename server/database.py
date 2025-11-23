@@ -204,6 +204,44 @@ class PodcastDatabase:
         
         return count > 0
     
+    def is_podcast_complete(self, podcast_id: str) -> bool:
+        """
+        检查podcast是否完整（存在且有segments）
+        暂时忽略segments翻译检查
+        
+        Args:
+            podcast_id: podcast的ID
+            
+        Returns:
+            如果podcast存在且有segments，返回True；否则返回False
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # 检查podcast是否存在
+        cursor.execute("SELECT COUNT(*) FROM podcasts WHERE id = ?", (podcast_id,))
+        if cursor.fetchone()[0] == 0:
+            conn.close()
+            return False
+        
+        # 检查是否有segments
+        cursor.execute("SELECT COUNT(*) FROM segments WHERE podcast_id = ?", (podcast_id,))
+        segment_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # 如果有segments，返回True（暂时忽略翻译检查）
+        return segment_count > 0
+        
+        # TODO: 后续可以添加翻译检查
+        # 检查是否所有segments都有翻译（非空）
+        # cursor.execute("""
+        #     SELECT COUNT(*) FROM segments 
+        #     WHERE podcast_id = ? AND (translation IS NULL OR translation = '' OR trim(translation) = '')
+        # """, (podcast_id,))
+        # untranslated_count = cursor.fetchone()[0]
+        # return untranslated_count == 0
+    
     def get_all_channels(self) -> List[Dict[str, str]]:
         """
         获取所有的podcast频道（company + channel组合）

@@ -1,6 +1,6 @@
 """Upload processed podcasts to server"""
 import httpx
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 class PodcastUploader:
     """Podcast上传器"""
@@ -13,6 +13,31 @@ class PodcastUploader:
         """
         self.server_url = server_url.rstrip('/')
         self.base_url = f'{self.server_url}/podcast'
+    
+    async def check_podcast_complete(self, podcast_id: str) -> bool:
+        """
+        检查服务端是否已有完整的podcast
+        """
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(f'{self.base_url}/check/{podcast_id}')
+                if response.status_code == 404:
+                    return False
+                response.raise_for_status()
+                result = response.json()
+                # 返回是否完整的状态
+                return result.get('success', False) and result.get('is_complete', False)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return False
+            print(f'[uploader] 检查podcast失败 (HTTP {e.response.status_code}): {podcast_id}')
+            return False
+        except httpx.RequestError as e:
+            print(f'[uploader] 检查podcast请求失败: {str(e)}')
+            return False
+        except Exception as e:
+            print(f'[uploader] 检查podcast异常: {str(e)}')
+            return False
     
     async def upload_podcast(self, podcast: Dict[str, Any]) -> bool:
         """
