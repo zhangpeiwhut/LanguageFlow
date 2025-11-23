@@ -71,24 +71,69 @@ async def process_podcast(podcast: Dict[str, Any]) -> Dict[str, Any]:
 
 async def process_podcasts_batch(
     podcasts: List[Dict[str, Any]],
-    max_concurrent: int = 1
+    max_concurrent: int = 1,
+    uploader=None
 ) -> List[Dict[str, Any]]:
+    """
+    批量处理podcasts，处理完一个就上传一个（如果提供了uploader）
+    
+    Args:
+        podcasts: podcast列表
+        max_concurrent: 最大并发数，默认1
+        uploader: 上传器实例，如果提供则处理完一个就上传一个
+    
+    Returns:
+        处理完成的podcast列表
+    """
     print(f'[processor] 开始批量处理 {len(podcasts)} 个podcasts（并发数: {max_concurrent}）')
+    if uploader:
+        print(f'[processor] 启用实时上传模式：处理完一个podcast就立即上传')
+    
     semaphore = asyncio.Semaphore(max_concurrent)
+    successful = []
+    failed_count = 0
+    
     async def process_with_semaphore(podcast):
         async with semaphore:
             try:
-                return await process_podcast(podcast)
+                processed = await process_podcast(podcast)
+                # 如果提供了uploader，处理完立即上传
+                if uploader:
+                    print(f'[processor] 处理完成，立即上传: {processed.get("id")}')
+                    upload_success = await uploader.upload_podcast(processed)
+                    if upload_success:
+                        print(f'[processor] ✓ 上传成功: {processed.get("title", "Unknown")}')
+                    else:
+                        print(f'[processor] ✗ 上传失败: {processed.get("title", "Unknown")}')
+                
+                return processed
             except Exception as e:
                 print(f'[processor] 处理podcast失败: {e}')
                 return None
-    tasks = [process_with_semaphore(podcast) for podcast in podcasts]
-    results = await asyncio.gather(*tasks)
-    successful = [r for r in results if r is not None]
-    print(f'[processor] 批量处理完成：成功 {len(successful)}/{len(podcasts)} 个')
+    
+    # 逐个处理（而不是并发），这样可以立即上传
+    for i, podcast in enumerate(podcasts, 1):
+        print(f'\n[processor] 处理进度: {i}/{len(podcasts)}')
+        result = await process_with_semaphore(podcast)
+        if result:
+            successful.append(result)
+        else:
+            failed_count += 1
+    
+    print(f'\n[processor] 批量处理完成：成功 {len(successful)}/{len(podcasts)} 个，失败 {failed_count} 个')
     return successful
 
-async def fetch_and_process_today_podcasts(days: int = 1) -> List[Dict[str, Any]]:
+async def fetch_and_process_today_podcasts(days: int = 1, uploader=None) -> List[Dict[str, Any]]:
+    """
+    获取并处理当天的podcasts
+    
+    Args:
+        days: 获取前几天的数据，默认1（昨天）
+        uploader: 上传器实例，如果提供则处理完一个就上传一个
+    
+    Returns:
+        处理完成的podcast列表
+    """
     print(f'[processor] 开始获取并处理前{days}天的podcasts...')
     # 1. 获取podcast列表 -> NPR All Things Considered
     podcasts = await PodcastFetcherService.fetch_npr_all_things_considered_by_days(days)
@@ -96,6 +141,6 @@ async def fetch_and_process_today_podcasts(days: int = 1) -> List[Dict[str, Any]
         print(f'[processor] 未找到podcasts')
         return []
     print(f'[processor] 获取到 {len(podcasts)} 个podcasts，开始处理...')
-    # 2. 批量处理
-    processed = await process_podcasts_batch(podcasts, max_concurrent=1)
+    # 2. 批量处理（如果提供了uploader，会实时上传）
+    processed = await process_podcasts_batch(podcasts, max_concurrent=1, uploader=uploader)
     return processed
