@@ -213,6 +213,10 @@ Environment="UVICORN_WORKERS=4"
 Environment="PORT=8001"
 Environment="VENV_PATH=/path/to/LanguageFlow/.venv"
 Environment="PATH=/path/to/LanguageFlow/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="COS_SECRET_ID=your-cos-secret-id"
+Environment="COS_SECRET_KEY=your-cos-secret-key"
+Environment="COS_REGION=ap-beijing"
+Environment="COS_BUCKET=your-bucket-name"
 ExecStart=/bin/bash /path/to/LanguageFlow/server/run.sh
 Restart=always
 RestartSec=10
@@ -257,7 +261,7 @@ autostart=true
 autorestart=true
 stderr_logfile=/path/to/LanguageFlow/logs/server_error.log
 stdout_logfile=/path/to/LanguageFlow/logs/server.log
-environment=SERVER_ENV="production",UVICORN_WORKERS="4",PORT="8001",VENV_PATH="/path/to/LanguageFlow/.venv"
+environment=SERVER_ENV="production",UVICORN_WORKERS="4",PORT="8001",VENV_PATH="/path/to/LanguageFlow/.venv",COS_SECRET_ID="your-cos-secret-id",COS_SECRET_KEY="your-cos-secret-key",COS_REGION="ap-beijing",COS_BUCKET="your-bucket-name"
 ```
 
 启动服务：

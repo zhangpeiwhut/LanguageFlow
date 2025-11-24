@@ -33,31 +33,29 @@ class COSService:
         )
         self.client = CosS3Client(config)
     
-    def upload_segments_json(self, podcast_id: str, segments: list, channel: str = None, timestamp: int = None) -> str:
+    def upload_segments_json(self, podcast_id: str, segments: list, channel: str, timestamp: int) -> str:
         """
         上传segments JSON到COS
         
         Args:
             podcast_id: podcast的ID
             segments: segments列表
-            channel: 频道名称（用于构建目录结构）
-            timestamp: 时间戳（用于构建目录结构）
+            channel: 频道名称（用于构建目录结构，必需）
+            timestamp: 时间戳（用于构建目录结构，必需）
             
         Returns:
-            segments JSON的对象Key（如 segments/{channel}/{timestamp}/{podcast_id}.json）
+            segments JSON的对象Key（segments/{channel}/{YYYY-MM-DD}/{podcast_id}.json）
         """
-        # 构建文件路径：segments/{channel}/{timestamp}/{podcast_id}.json
-        # 如果提供了channel和timestamp，使用分层结构；否则使用扁平结构
-        if channel and timestamp:
-            # 将channel中的特殊字符替换为安全字符（用于路径）
-            safe_channel = channel.replace('/', '_').replace('\\', '_')
-            # 将timestamp转换为日期字符串（YYYY-MM-DD格式）
-            from datetime import datetime, timezone
-            date_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime('%Y-%m-%d')
-            key = f'segments/{safe_channel}/{date_str}/{podcast_id}.json'
-        else:
-            # 兼容旧格式（如果没有提供channel和timestamp）
-            key = f'segments/{podcast_id}.json'
+        if not channel or not timestamp:
+            raise ValueError('channel和timestamp是必需参数，用于构建目录结构')
+        
+        # 将channel中的特殊字符替换为安全字符（用于路径）
+        # 替换斜杠、反斜杠、空格等特殊字符
+        safe_channel = channel.replace('/', '_').replace('\\', '_').replace(' ', '_')
+        # 将timestamp转换为日期字符串（YYYY-MM-DD格式）
+        from datetime import datetime, timezone
+        date_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime('%Y-%m-%d')
+        key = f'segments/{safe_channel}/{date_str}/{podcast_id}.json'
         
         json_data = json.dumps(segments, ensure_ascii=False, indent=2)
         json_bytes = json_data.encode('utf-8')
