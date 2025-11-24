@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import SwiftfulLoadingIndicators
 
 struct SecondLevelView: View {
     let channel: Channel
@@ -20,7 +19,7 @@ struct SecondLevelView: View {
     var body: some View {
         Group {
             if isLoadingDates {
-                LoadingIndicator(animation: .fiveLines)
+                ProgressView()
             } else if let error = errorMessage, timestamps.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
@@ -45,21 +44,22 @@ struct SecondLevelView: View {
                     ScrollView {
                         VStack(spacing: 20) {
                             if isLoadingPodcasts {
-                                LoadingIndicator(animation: .fiveLines)
-                                    .frame(maxWidth: .infinity)
+                                ProgressView()
                             } else {
-                                WaterfallGrid(items: podcasts, spacing: 14) { podcast in
-                                    Button {
-                                        presentingPodcast = podcast
-                                    } label: {
-                                        PodcastCardView(
-                                            podcast: podcast,
-                                            showTranslation: !areTranslationsHidden,
-                                            durationText: formatDurationMinutes(podcast.duration),
-                                            segmentText: formatSegmentCount(podcast.segmentCount)
-                                        )
+                                LazyVStack(spacing: 14) {
+                                    ForEach(podcasts) { podcast in
+                                        Button {
+                                            presentingPodcast = podcast
+                                        } label: {
+                                            PodcastCardView(
+                                                podcast: podcast,
+                                                showTranslation: !areTranslationsHidden,
+                                                durationText: formatDurationMinutes(podcast.duration),
+                                                segmentText: formatSegmentCount(podcast.segmentCount)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                                 .animation(.easeInOut(duration: 0.3), value: areTranslationsHidden)
                             }
@@ -191,47 +191,6 @@ private extension SecondLevelView {
     func formatSegmentCount(_ count: Int?) -> String {
         guard let count else { return "0句" }
         return "\(count)句"
-    }
-}
-
-// MARK: - Waterfall Grid
-struct WaterfallGrid<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
-    private let items: Data
-    private let content: (Data.Element) -> Content
-    private let spacing: CGFloat
-
-    init(items: Data, spacing: CGFloat = 12, @ViewBuilder content: @escaping (Data.Element) -> Content) {
-        self.items = items
-        self.content = content
-        self.spacing = spacing
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: spacing) {
-            LazyVStack(spacing: spacing) {
-                ForEach(leftColumn) { item in
-                    content(item)
-                }
-            }
-            LazyVStack(spacing: spacing) {
-                ForEach(rightColumn) { item in
-                    content(item)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var leftColumn: [Data.Element] {
-        items.enumerated().compactMap { index, element in
-            index.isMultiple(of: 2) ? element : nil
-        }
-    }
-
-    private var rightColumn: [Data.Element] {
-        items.enumerated().compactMap { index, element in
-            index.isMultiple(of: 2) ? nil : element
-        }
     }
 }
 

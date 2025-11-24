@@ -48,7 +48,7 @@ private struct SegmentPracticeCard: View {
         VStack(alignment: .leading, spacing: 8) {
             numberTag()
             
-            Text(segment.text)
+            Text(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -137,7 +137,6 @@ private struct SegmentPracticeControls: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("倍速 \(playbackRate, specifier: "%.2fx")")
 
             Button(action: onFavorite) {
                 Image(systemName: isFavorited ? "heart.fill" : "heart")
@@ -145,7 +144,6 @@ private struct SegmentPracticeControls: View {
                     .foregroundColor(isFavorited ? .pink : .secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isFavorited ? "取消收藏" : "收藏")
         }
     }
 }

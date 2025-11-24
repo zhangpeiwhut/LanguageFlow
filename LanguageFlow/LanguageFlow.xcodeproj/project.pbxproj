@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 853A2BF12ED0AFF20011FDBC /* Alamofire */; };
-		853A2BFC2ED2DA660011FDBC /* SwiftfulLoadingIndicators in Frameworks */ = {isa = PBXBuildFile; productRef = 853A2BFB2ED2DA660011FDBC /* SwiftfulLoadingIndicators */; };
 		854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 854609CF2ECC55E1004D4163 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
 
@@ -44,7 +43,6 @@
 			files = (
 				854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */,
 				853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */,
-				853A2BFC2ED2DA660011FDBC /* SwiftfulLoadingIndicators in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,7 +87,6 @@
 			packageProductDependencies = (
 				854609CF2ECC55E1004D4163 /* ComposableArchitecture */,
 				853A2BF12ED0AFF20011FDBC /* Alamofire */,
-				853A2BFB2ED2DA660011FDBC /* SwiftfulLoadingIndicators */,
 			);
 			productName = LanguageFlow;
 			productReference = 854609C02ECC5590004D4163 /* LanguageFlow.app */;
@@ -122,7 +119,6 @@
 			packageReferences = (
 				854609CE2ECC55E1004D4163 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
 				853A2BF02ED0AFF20011FDBC /* XCRemoteSwiftPackageReference "Alamofire" */,
-				853A2BFA2ED2DA660011FDBC /* XCRemoteSwiftPackageReference "SwiftfulLoadingIndicators" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 854609C12ECC5590004D4163 /* Products */;
@@ -395,14 +391,6 @@
 				minimumVersion = 5.10.2;
 			};
 		};
-		853A2BFA2ED2DA660011FDBC /* XCRemoteSwiftPackageReference "SwiftfulLoadingIndicators" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/SwiftfulThinking/SwiftfulLoadingIndicators.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.0.4;
-			};
-		};
 		854609CE2ECC55E1004D4163 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
@@ -418,11 +406,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 853A2BF02ED0AFF20011FDBC /* XCRemoteSwiftPackageReference "Alamofire" */;
 			productName = Alamofire;
-		};
-		853A2BFB2ED2DA660011FDBC /* SwiftfulLoadingIndicators */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 853A2BFA2ED2DA660011FDBC /* XCRemoteSwiftPackageReference "SwiftfulLoadingIndicators" */;
-			productName = SwiftfulLoadingIndicators;
 		};
 		854609CF2ECC55E1004D4163 /* ComposableArchitecture */ = {
 			isa = XCSwiftPackageProductDependency;

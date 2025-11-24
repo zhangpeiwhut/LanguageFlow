@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import SwiftfulLoadingIndicators
 
 struct FirstLevelView: View {
     @State private var channels: [Channel] = []
@@ -15,7 +14,7 @@ struct FirstLevelView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    LoadingIndicator(animation: .fiveLinesCenter, speed: .normal)
+                    ProgressView()
                 } else if let error = errorMessage {
                     VStack(spacing: 16) {
                         Image(systemName: "exclamationmark.triangle")

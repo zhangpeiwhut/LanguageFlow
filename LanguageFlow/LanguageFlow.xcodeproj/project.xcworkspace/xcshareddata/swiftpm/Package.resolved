@@ -1,5 +1,5 @@
 {
-  "originHash" : "899d8f97103d4b8c17a90c61b6b8e0f02f86ed14dcd8677e56801be233f1cb61",
+  "originHash" : "1ccd3138809499c54307ff1266afcb41397723c6fcc67d2c3209b22d0e402112",
   "pins" : [
     {
       "identity" : "alamofire",
@@ -125,15 +125,6 @@
       "state" : {
         "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
         "version" : "602.0.0"
-      }
-    },
-    {
-      "identity" : "swiftfulloadingindicators",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SwiftfulThinking/SwiftfulLoadingIndicators.git",
-      "state" : {
-        "revision" : "85858c0246dcd781228301f9928519f75ce89758",
-        "version" : "0.0.4"
       }
     },
     {
