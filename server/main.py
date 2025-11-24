@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any
 from .database import PodcastDatabase
+from .cos_service import COSService
 
 app = FastAPI(
     title='Podcast Service',
@@ -27,6 +28,13 @@ router = APIRouter(prefix="/podcast", tags=["podcast"])
 db_path = os.getenv("DB_PATH", "podcasts.db")
 db = PodcastDatabase(db_path=db_path)
 
+# 初始化COS服务（用于生成预签名URL）
+try:
+    cos_service = COSService()
+except Exception as e:
+    print(f'[podcast-service] COS服务初始化失败: {e}')
+    cos_service = None
+
 def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
     """
     验证并插入单个podcast的内部函数
@@ -35,12 +43,10 @@ def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
         (podcast_id, success) 元组
     """
     # 验证必需字段
-    required_fields = ['company', 'channel', 'audioURL', 'timestamp']
+    required_fields = ['company', 'channel', 'audioURL', 'timestamp', 'segmentsKey', 'segmentCount']
     missing_fields = [f for f in required_fields if f not in podcast]
     if missing_fields:
         raise ValueError(f'缺少必需字段: {missing_fields}')
-    
-    # 存储podcast（包含segments）
     podcast_id = db.insert_podcast(podcast)
     return podcast_id, True
 
@@ -144,9 +150,13 @@ async def check_podcast_complete(podcast_id: str):
 
 
 @router.get('/detail/{podcast_id}')
-async def get_podcast_detail_by_id(podcast_id: str):
+async def get_podcast_detail_by_id(
+    podcast_id: str,
+    expires: int = Query(300, description='临时URL有效期（秒），默认300秒（5分钟）', ge=60, le=3600)
+):
     """
-    根据ID获取podcast详情（包含segments）
+    根据ID获取podcast详情
+    会自动生成临时URL（预签名URL）并返回
     """
     try:
         podcast = db.get_podcast_by_id(podcast_id)
@@ -154,9 +164,33 @@ async def get_podcast_detail_by_id(podcast_id: str):
         if not podcast:
             raise HTTPException(status_code=404, detail='Podcast not found')
         
+        # 检查COS服务是否可用
+        if not cos_service:
+            raise HTTPException(
+                status_code=503,
+                detail='COS service not configured. Please set COS_SECRET_ID, COS_SECRET_KEY, and COS_BUCKET environment variables.'
+            )
+        
+        # 生成临时URL
+        segments_key = podcast.get('segmentsKey')
+        if not segments_key:
+            raise HTTPException(status_code=500, detail='Podcast missing segmentsKey')
+        
+        try:
+            segments_temp_url = cos_service.get_presigned_url(segments_key, expires=expires)
+        except Exception as e:
+            print(f'[podcast-service] 生成segments临时URL失败: {e}')
+            raise HTTPException(status_code=500, detail=f'生成临时URL失败: {str(e)}')
+        
+        # 返回podcast详情，包含临时URL（不暴露segmentsKey）
+        result = dict(podcast)
+        result['segmentsTempURL'] = segments_temp_url
+        result['segmentsTempURLExpiresIn'] = expires
+        result.pop('segmentsKey', None)
+        
         return JSONResponse({
             'success': True,
-            'podcast': podcast
+            'podcast': result
         })
         
     except HTTPException:
@@ -169,7 +203,7 @@ async def get_podcast_detail_by_id(podcast_id: str):
 @router.post('/upload')
 async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
     """
-    上传完整的podcast数据（包含segments）
+    上传完整的podcast数据
     
     请求体格式:
     {
@@ -182,15 +216,8 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
         "timestamp": 1234567890,
         "language": "en",
         "duration": 3600,
-        "segments": [
-            {
-                "id": "segment_id",
-                "text": "Original text",
-                "start": 2.444,
-                "end": 5.329,
-                "translation": "翻译文本"
-            }
-        ]
+        "segmentsKey": "segments/podcast_id.json",
+        "segmentCount": 100
     }
     """
     try:
@@ -200,7 +227,7 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
             'success': True,
             'message': 'Podcast上传成功',
             'id': podcast_id,
-            'segments_count': len(podcast.get('segments', []))
+            'segmentsKey': podcast.get('segmentsKey')
         })
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -214,14 +241,15 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
 @router.post('/upload/batch')
 async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
     """
-    批量上传podcasts（包含segments）
+    批量上传podcasts（包含segmentsKey和segmentCount）
     请求体格式:
     [
         {
             "id": "podcast_id",
             "company": "NPR",
             ...
-            "segments": [...]
+            "segmentsKey": "segments/podcast_id.json",
+            "segmentCount": 100
         },
         ...
     ]

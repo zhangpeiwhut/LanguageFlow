@@ -137,13 +137,32 @@ struct PodcastLearningView: View {
             isLoading = true
             errorMessage = nil
             do {
-                let loadedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
-                let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: loadedPodcast)
-                store = PodcastLearningStore(
-                    podcast: loadedPodcast,
-                    localAudioURL: localAudioURL,
-                    modelContext: modelContext
-                )
+                if let cached = FavoriteManager.shared.cachedFavoritePodcast(podcastId, context: modelContext),
+                   let cachedPodcast = cached.toPodcast() {
+                    let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: cachedPodcast)
+                    var segments: [Podcast.Segment] = []
+                    segments = try await PodcastAPI.shared.loadSegments(from: cachedPodcast.segmentsTempURL)
+                    store = PodcastLearningStore(
+                        podcast: cachedPodcast,
+                        segments: segments,
+                        localAudioURL: localAudioURL,
+                        modelContext: modelContext
+                    )
+                } else {
+                    let loadedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
+                    let tempURL = loadedPodcast.segmentsTempURL
+                    let segments = try await PodcastAPI.shared.loadSegments(from: tempURL)
+                    guard !segments.isEmpty else {
+                        throw NSError(domain: "PodcastLoadingError", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法加载segments数据"])
+                    }
+                    let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: loadedPodcast)
+                    store = PodcastLearningStore(
+                        podcast: loadedPodcast,
+                        segments: segments,
+                        localAudioURL: localAudioURL,
+                        modelContext: modelContext
+                    )
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 print("加载podcast详情失败: \(error)")
@@ -156,6 +175,7 @@ struct PodcastLearningView: View {
 @Observable
 final class PodcastLearningStore {
     var podcast: Podcast
+    var segments: [Podcast.Segment]
     var isGlobalPlaying = false
     var globalPlaybackRate: Double = 1.0
     var isGlobalFavorited: Bool
@@ -175,13 +195,15 @@ final class PodcastLearningStore {
     @ObservationIgnored private var isScrubbing = false
     @ObservationIgnored private let localAudioURL: URL
 
-    init(podcast: Podcast, localAudioURL: URL, modelContext: ModelContext) {
+    init(podcast: Podcast, segments: [Podcast.Segment], localAudioURL: URL, modelContext: ModelContext) {
         self.podcast = podcast
+        self.segments = segments
         self.modelContext = modelContext
         self.localAudioURL = localAudioURL
         let locallyFavorited = FavoriteManager.shared.isPodcastFavorited(podcast.id, context: modelContext)
         self.isGlobalFavorited = locallyFavorited || (podcast.status?.isFavorited ?? false)
-        for segment in podcast.segments {
+        
+        for segment in segments {
             let segmentId = "\(podcast.id)-\(segment.id)"
             let isSegmentFavorited = FavoriteManager.shared.isSegmentFavorited(segmentId, context: modelContext)
             segmentStates[segment.id] = SegmentPracticeState(
@@ -190,8 +212,8 @@ final class PodcastLearningStore {
                 lastScore: segment.status?.bestScore
             )
         }
-        currentSegmentID = podcast.segments.first?.id
-        if let firstSegment = podcast.segments.first {
+        currentSegmentID = segments.first?.id
+        if let firstSegment = segments.first {
             currentTime = firstSegment.start
         }
         setupAudioPlayer()
@@ -217,7 +239,7 @@ final class PodcastLearningStore {
         setPlayingSegment(nil)
         
         if currentSegmentID == nil {
-            currentSegmentID = podcast.segments.first?.id
+            currentSegmentID = segments.first?.id
         }
         playCurrentSegment()
     }
@@ -227,7 +249,7 @@ final class PodcastLearningStore {
         if isGlobalPlaying {
             audioPlayer?.rate = Float(rate)
         }
-        for segment in podcast.segments {
+        for segment in segments {
             var state = segmentStates[segment.id] ?? SegmentPracticeState()
             state.playbackRate = rate
             segmentStates[segment.id] = state
@@ -259,13 +281,13 @@ final class PodcastLearningStore {
         withAnimation(.easeInOut(duration: 0.2)) {
             areTranslationsHidden.toggle()
             if areTranslationsHidden {
-                for segment in podcast.segments {
+                for segment in segments {
                     var state = segmentStates[segment.id] ?? SegmentPracticeState()
                     state.isTranslationVisible = false
                     segmentStates[segment.id] = state
                 }
             } else {
-                for segment in podcast.segments {
+                for segment in segments {
                     var state = segmentStates[segment.id] ?? SegmentPracticeState()
                     state.isTranslationVisible = true
                     segmentStates[segment.id] = state
@@ -382,7 +404,7 @@ final class PodcastLearningStore {
     var currentSegmentIndex: Int? {
         guard
             let currentID = currentSegmentID,
-            let index = podcast.segments.firstIndex(where: { $0.id == currentID })
+            let index = segments.firstIndex(where: { $0.id == currentID })
         else {
             return nil
         }
@@ -390,7 +412,7 @@ final class PodcastLearningStore {
     }
     
     var totalDuration: Double {
-        guard let lastSegment = podcast.segments.last else {
+        guard let lastSegment = segments.last else {
             return 0
         }
         return lastSegment.end
@@ -464,7 +486,7 @@ final class PodcastLearningStore {
     
     private func playCurrentSegment() {
         guard let currentID = currentSegmentID,
-              let segment = podcast.segments.first(where: { $0.id == currentID }) else {
+              let segment = segments.first(where: { $0.id == currentID }) else {
             return
         }
         playSegment(segment, useGlobalRate: true)
@@ -497,14 +519,14 @@ final class PodcastLearningStore {
                 let currentSeconds = time.seconds
                 self.currentTime = currentSeconds
                 if self.isGlobalMode {
-                    if let currentSegment = self.podcast.segments.first(where: {
+                    if let currentSegment = self.segments.first(where: {
                         currentSeconds >= $0.start && currentSeconds < $0.end 
                     }) {
                         if self.currentSegmentID != currentSegment.id {
                             self.currentSegmentID = currentSegment.id
                         }
                     }
-                    if let lastSegment = self.podcast.segments.last,
+                    if let lastSegment = self.segments.last,
                        currentSeconds >= lastSegment.end {
                         self.handleGlobalPlaybackCompletion(using: player)
                     }
@@ -556,17 +578,17 @@ final class PodcastLearningStore {
     private func advanceToNextSegment() {
         guard
             let currentID = currentSegmentID,
-            let index = podcast.segments.firstIndex(where: { $0.id == currentID })
+            let index = segments.firstIndex(where: { $0.id == currentID })
         else {
-            currentSegmentID = podcast.segments.first?.id
+            currentSegmentID = segments.first?.id
             if isGlobalMode && isGlobalPlaying {
                 playCurrentSegment()
             }
             return
         }
 
-        let nextIndex = (index + 1) % podcast.segments.count
-        currentSegmentID = podcast.segments[nextIndex].id
+        let nextIndex = (index + 1) % segments.count
+        currentSegmentID = segments[nextIndex].id
         
         if isGlobalMode && isGlobalPlaying {
             playCurrentSegment()
@@ -574,7 +596,7 @@ final class PodcastLearningStore {
     }
     
     private func setPlayingSegment(_ segmentID: Podcast.Segment.ID?) {
-        for segment in podcast.segments {
+        for segment in segments {
             var state = currentState(for: segment)
             state.isPlaying = (segment.id == segmentID)
             segmentStates[segment.id] = state
@@ -590,7 +612,7 @@ final class PodcastLearningStore {
     }
     
     private func restartGlobalPlayback(using player: AVPlayer) {
-        guard let firstSegment = podcast.segments.first else { return }
+        guard let firstSegment = segments.first else { return }
         let startTime = CMTime(seconds: firstSegment.start, preferredTimescale: 600)
         player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let self = self else { return }
@@ -617,11 +639,11 @@ final class PodcastLearningStore {
     }
     
     private func segment(at time: Double) -> Podcast.Segment? {
-        for segment in podcast.segments {
+        for segment in segments {
             if time >= segment.start && time <= segment.end {
                 return segment
             }
         }
-        return podcast.segments.last(where: { $0.start <= time }) ?? podcast.segments.first
+        return segments.last(where: { $0.start <= time }) ?? segments.first
     }
 }

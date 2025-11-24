@@ -15,9 +15,14 @@ struct ContentView: View {
                     Label("频道", systemImage: "radio")
                 }
 
-            FavoritesView()
+            FavoritePodcastsView()
                 .tabItem {
-                    Label("收藏", systemImage: "heart.fill")
+                    Label("整篇", systemImage: "text.book.closed")
+                }
+
+            FavoriteSegmentsView()
+                .tabItem {
+                    Label("单句", systemImage: "text.quote")
                 }
         }
     }

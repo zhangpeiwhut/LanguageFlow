@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from .podcast_fetcher_service import PodcastFetcherService
 from .whisperx_service import transcribe_audio_url
 from .translator import translate_segments, get_translator
+from .cos_service import COSService
 
 def generate_podcast_id(company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
     normalized_company = (company or "").strip().lower()
@@ -89,6 +90,25 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
                 print(f'[processor] 标题翻译为空')
         except Exception as e:
             print(f'[processor] 标题翻译失败: {e}')
+    
+    # 上传segments到COS
+    segments_key = None
+    if segments:
+        try:
+            print(f'[processor] 开始上传segments到COS: {len(segments)} 个片段')
+            cos_service = COSService()
+            # 为segments添加id字段（使用索引作为id）
+            segments_with_id = []
+            for i, segment in enumerate(segments):
+                segment_with_id = segment.copy()
+                segment_with_id['id'] = i + 1  # 从1开始
+                segments_with_id.append(segment_with_id)
+            segments_key = cos_service.upload_segments_json(podcast_id, segments_with_id)
+            print(f'[processor] segments上传成功: {segments_key}')
+        except Exception as e:
+            print(f'[processor] segments上传到COS失败: {e}')
+            raise Exception(f'上传segments到COS失败: {str(e)}')
+    
     complete_podcast = {
         'id': podcast_id,
         'company': podcast.get('company', ''),
@@ -100,7 +120,8 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
         'timestamp': podcast.get('timestamp', 0),
         'language': detected_language,
         'duration': podcast.get('duration'),
-        'segments': segments
+        'segmentsKey': segments_key,
+        'segmentCount': len(segments) if segments else 0
     }
     print(f'[processor] 处理完成：podcast ID = {podcast_id}')
     return complete_podcast

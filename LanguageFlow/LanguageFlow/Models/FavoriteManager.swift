@@ -18,23 +18,16 @@ class FavoriteManager {
         let descriptor = FetchDescriptor<FavoritePodcast>(
             predicate: #Predicate { $0.id == podcast.id }
         )
-        if let existing = try? context.fetch(descriptor).first {
-            existing.title = podcast.title
-            existing.subtitle = podcast.subtitle
-            existing.audioURL = podcast.audioURL
+        if let _ = try? context.fetch(descriptor).first {
+            return
         } else {
-            let favoritePodcast = FavoritePodcast(
-                id: podcast.id,
-                title: podcast.title,
-                subtitle: podcast.subtitle,
-                audioURL: podcast.audioURL
-            )
+            let favoritePodcast = FavoritePodcast(podcast: podcast)
             context.insert(favoritePodcast)
         }
         try context.save()
 
         Task.detached { [audioCache] in
-            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, audioURL: podcast.audioURL)
+            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
         }
     }
 
@@ -45,6 +38,14 @@ class FavoriteManager {
         if let favoritePodcast = try? context.fetch(descriptor).first {
             context.delete(favoritePodcast)
             try context.save()
+            let remainingSegments = try context.fetch(
+                FetchDescriptor<FavoriteSegment>(
+                    predicate: #Predicate { $0.podcastId == podcastId }
+                )
+            )
+            if remainingSegments.isEmpty {
+                audioCache.deleteCachedAudio(forPodcastId: podcastId)
+            }
         }
     }
 
@@ -73,7 +74,7 @@ class FavoriteManager {
         try context.save()
 
         Task.detached { [audioCache] in
-            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, audioURL: podcast.audioURL)
+            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
         }
     }
 
@@ -82,8 +83,19 @@ class FavoriteManager {
             predicate: #Predicate { $0.id == segmentId }
         )
         if let favoriteSegment = try? context.fetch(descriptor).first {
+            let podcastId = favoriteSegment.podcastId
             context.delete(favoriteSegment)
             try context.save()
+            
+            let remainingSegments = try context.fetch(
+                FetchDescriptor<FavoriteSegment>(
+                    predicate: #Predicate { $0.podcastId == podcastId }
+                )
+            )
+            let hasPodcastFavorite = isPodcastFavorited(podcastId, context: context)
+            if remainingSegments.isEmpty && !hasPodcastFavorite {
+                audioCache.deleteCachedAudio(forPodcastId: podcastId)
+            }
         }
     }
     
@@ -103,17 +115,24 @@ class FavoriteManager {
     }
 
     func cachedAudioURL(for segment: FavoritePodcastSegment) -> URL? {
-        audioCache.cachedAudioURL(forPodcastId: segment.podcastId, audioURL: segment.audioURL)
+        audioCache.cachedAudioURL(forPodcastId: segment.podcastId)
     }
 
     @discardableResult
     func ensureLocalAudio(for segment: FavoritePodcastSegment) async throws -> URL {
-        try await audioCache.ensureAudioCached(forPodcastId: segment.podcastId, audioURL: segment.audioURL)
+        try await audioCache.ensureAudioCached(forPodcastId: segment.podcastId, remoteURL: segment.audioURL)
     }
 
     @discardableResult
     func ensureLocalAudio(for podcast: Podcast) async throws -> URL {
-        try await audioCache.ensureAudioCached(forPodcastId: podcast.id, audioURL: podcast.audioURL)
+        try await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
+    }
+
+    func cachedFavoritePodcast(_ podcastId: String, context: ModelContext) -> FavoritePodcast? {
+        let descriptor = FetchDescriptor<FavoritePodcast>(
+            predicate: #Predicate { $0.id == podcastId }
+        )
+        return try? context.fetch(descriptor).first
     }
 }
 

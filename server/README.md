@@ -281,6 +281,12 @@ sudo supervisorctl start languageflow
 | `UVICORN_WORKERS` | Worker 数量（生产环境） | `4` |
 | `PORT` | 服务端口 | `8001` |
 | `VENV_PATH` | 虚拟环境路径 | `.venv` |
+| `COS_SECRET_ID` | 腾讯云COS SecretId（用于生成预签名URL） | - |
+| `COS_SECRET_KEY` | 腾讯云COS SecretKey（用于生成预签名URL） | - |
+| `COS_REGION` | COS地域，如 ap-beijing | `ap-beijing` |
+| `COS_BUCKET` | COS存储桶名称 | - |
+
+**注意**：如果未配置COS相关环境变量，`/podcast/detail/{podcast_id}` 接口将返回503错误。
 
 ### API 端点
 
@@ -290,12 +296,14 @@ sudo supervisorctl start languageflow
 | `/podcast/channels` | GET | 获取所有频道列表 |
 | `/podcast/channels/{company}/{channel}/dates` | GET | 获取频道日期列表 |
 | `/podcast/channels/{company}/{channel}/podcasts` | GET | 获取频道某日期的podcasts |
-| `/podcast/detail/{podcast_id}` | GET | 根据ID获取podcast详情（包含segments） |
-| `/podcast/upload` | POST | 上传单个podcast（包含segments） |
-| `/podcast/upload/batch` | POST | 批量上传podcasts（包含segments） |
+| `/podcast/detail/{podcast_id}` | GET | 根据ID获取podcast详情（自动包含临时URL） |
+| `/podcast/upload` | POST | 上传单个podcast（包含segmentsKey和segmentCount） |
+| `/podcast/upload/batch` | POST | 批量上传podcasts（包含segmentsURL） |
 | `/docs` | GET | API 文档（Swagger UI） |
 
-**注意**：Podcast 抓取和转录功能在 `local/` 目录中处理，然后通过 `/podcast/upload` 接口上传到服务器。
+**注意**：
+- Podcast 抓取和转录功能在 `local/` 目录中处理，然后通过 `/podcast/upload` 接口上传到服务器。
+- segments数据存储在COS，客户端通过 `/podcast/detail/{podcast_id}` 获取podcast详情时会自动包含临时URL。
 
 ---
 

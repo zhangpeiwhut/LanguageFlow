@@ -2,3 +2,4 @@ httpx>=0.25.0
 whisperx>=3.1.1
 torch>=2.0.0
 schedule>=1.2.0
+cos-python-sdk-v5>=1.9.25

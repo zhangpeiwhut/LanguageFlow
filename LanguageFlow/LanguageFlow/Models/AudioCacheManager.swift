@@ -19,18 +19,17 @@ final class AudioCacheManager {
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
-    func cachedAudioURL(forPodcastId podcastId: String, audioURL: String) -> URL? {
-        guard let remoteURL = URL(string: audioURL) else { return nil }
-        let destination = makeDestinationURL(forPodcastId: podcastId, remoteURL: remoteURL)
+    func cachedAudioURL(forPodcastId podcastId: String) -> URL? {
+        let destination = makeDestinationURL(forPodcastId: podcastId)
         return fileManager.fileExists(atPath: destination.path) ? destination : nil
     }
 
     @discardableResult
-    func ensureAudioCached(forPodcastId podcastId: String, audioURL: String) async throws -> URL {
-        guard let remoteURL = URL(string: audioURL) else {
+    func ensureAudioCached(forPodcastId podcastId: String, remoteURL: String) async throws -> URL {
+        guard let remoteURL = URL(string: remoteURL) else {
             throw FavoriteError.invalidAudioURL
         }
-        let destination = makeDestinationURL(forPodcastId: podcastId, remoteURL: remoteURL)
+        let destination = makeDestinationURL(forPodcastId: podcastId)
         if fileManager.fileExists(atPath: destination.path) {
             return destination
         }
@@ -44,14 +43,12 @@ final class AudioCacheManager {
         }
     }
 
-    private func makeDestinationURL(forPodcastId podcastId: String, remoteURL: URL) -> URL {
-        let ext = remoteURL.pathExtension.isEmpty ? "mp3" : remoteURL.pathExtension
-        return cacheDirectory.appendingPathComponent("\(podcastId).\(ext)")
+    private func makeDestinationURL(forPodcastId podcastId: String) -> URL {
+        return cacheDirectory.appendingPathComponent("\(podcastId).mp3")
     }
 
-    func deleteCachedAudio(forPodcastId podcastId: String, remoteURL: URL) {
-        let ext = remoteURL.pathExtension.isEmpty ? "mp3" : remoteURL.pathExtension
-        let url = cacheDirectory.appendingPathComponent("\(podcastId).\(ext)")
+    func deleteCachedAudio(forPodcastId podcastId: String) {
+        let url = cacheDirectory.appendingPathComponent("\(podcastId).mp3")
         try? fileManager.removeItem(at: url)
     }
 }

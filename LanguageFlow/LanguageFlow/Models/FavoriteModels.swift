@@ -73,13 +73,26 @@ final class FavoritePodcast {
     var title: String?
     var subtitle: String?
     var audioURL: String
+    var language: String = ""
+    var segmentCount: Int
+    var duration: Int?
     var createdAt: Date
 
-    init(id: String, title: String?, subtitle: String?, audioURL: String) {
-        self.id = id
-        self.title = title
-        self.subtitle = subtitle
-        self.audioURL = audioURL
+    init(podcast: Podcast) {
+        self.id = podcast.id
+        self.title = podcast.title
+        self.subtitle = podcast.subtitle
+        self.audioURL = podcast.audioURL
+        self.language = podcast.language
+        self.duration = podcast.duration
+        self.segmentCount = podcast.segmentCount
         self.createdAt = Date()
+    }
+}
+
+extension FavoritePodcast {
+    func toPodcast() -> Podcast? {
+        // TODO: zhangpei
+        return nil
     }
 }

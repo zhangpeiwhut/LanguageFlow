@@ -7,11 +7,11 @@ struct SegmentListView: View {
 
     var body: some View {
         LazyVStack(spacing: 12) {
-            ForEach(Array(store.podcast.segments.enumerated()), id: \.element.id) { index, segment in
+            ForEach(Array(store.segments.enumerated()), id: \.element.id) { index, segment in
                 SegmentPracticeCard(
                     segment: segment,
                     segmentNumber: index + 1,
-                    totalSegments: max(store.podcast.segments.count, 1),
+                    totalSegments: max(store.segments.count, 1),
                     state: Binding(
                         get: { store.segmentStates[segment.id] ?? SegmentPracticeState() },
                         set: { store.segmentStates[segment.id] = $0 }

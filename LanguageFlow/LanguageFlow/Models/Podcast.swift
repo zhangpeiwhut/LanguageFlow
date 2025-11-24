@@ -30,9 +30,12 @@ struct Podcast: Codable, Identifiable {
     let subtitle: String?
     let timestamp: Int
     let language: String
-    let segments: [Segment]
+    let segmentsTempURL: String
+    let segmentCount: Int
     let status: Status?
+    let duration: Int?
 
+    nonisolated
     struct Segment: Identifiable, Codable {
         let id: Int
         let text: String

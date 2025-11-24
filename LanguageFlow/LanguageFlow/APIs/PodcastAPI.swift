@@ -61,6 +61,13 @@ class PodcastAPI {
         .value
         .podcast
     }
+    
+    func loadSegments(from tempURL: String) async throws -> [Podcast.Segment] {
+        return try await AF.request(tempURL, method: .get)
+            .validate()
+            .serializingDecodable([Podcast.Segment].self)
+            .value
+    }
 }
 
 nonisolated
