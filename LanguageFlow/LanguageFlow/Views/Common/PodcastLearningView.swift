@@ -8,13 +8,19 @@ import Combine
 import Observation
 import AVFoundation
 import AVFAudio
+import SwiftData
 
 struct PodcastLearningView: View {
     let podcastId: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var store: PodcastLearningStore?
+
+    init(podcastId: String) {
+        self.podcastId = podcastId
+    }
 
     private var backButton: some View {
         Button {
@@ -35,7 +41,7 @@ struct PodcastLearningView: View {
         ZStack(alignment: .topLeading) {
             Group {
                 if isLoading {
-                    ProgressView("加载中...")
+                    ProgressView()
                 } else if let error = errorMessage {
                     VStack(spacing: 16) {
                         Image(systemName: "exclamationmark.triangle")
@@ -130,15 +136,18 @@ struct PodcastLearningView: View {
         Task {
             isLoading = true
             errorMessage = nil
-            
             do {
                 let loadedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
-                store = PodcastLearningStore(podcast: loadedPodcast)
+                let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: loadedPodcast)
+                store = PodcastLearningStore(
+                    podcast: loadedPodcast,
+                    localAudioURL: localAudioURL,
+                    modelContext: modelContext
+                )
             } catch {
                 errorMessage = error.localizedDescription
                 print("加载podcast详情失败: \(error)")
             }
-            
             isLoading = false
         }
     }
@@ -156,6 +165,7 @@ final class PodcastLearningStore {
     var isLooping = false
     var areTranslationsHidden = false
 
+    @ObservationIgnored private var modelContext: ModelContext
     @ObservationIgnored private var playbackTimer: AnyCancellable?
     @ObservationIgnored private var audioPlayer: AVPlayer?
     @ObservationIgnored private var timeObserver: Any?
@@ -163,14 +173,20 @@ final class PodcastLearningStore {
     @ObservationIgnored private var isGlobalMode = false
     @ObservationIgnored private var shouldResumeAfterSeek = false
     @ObservationIgnored private var isScrubbing = false
+    @ObservationIgnored private let localAudioURL: URL
 
-    init(podcast: Podcast) {
+    init(podcast: Podcast, localAudioURL: URL, modelContext: ModelContext) {
         self.podcast = podcast
-        self.isGlobalFavorited = podcast.status?.isFavorited ?? false
+        self.modelContext = modelContext
+        self.localAudioURL = localAudioURL
+        let locallyFavorited = FavoriteManager.shared.isPodcastFavorited(podcast.id, context: modelContext)
+        self.isGlobalFavorited = locallyFavorited || (podcast.status?.isFavorited ?? false)
         for segment in podcast.segments {
+            let segmentId = "\(podcast.id)-\(segment.id)"
+            let isSegmentFavorited = FavoriteManager.shared.isSegmentFavorited(segmentId, context: modelContext)
             segmentStates[segment.id] = SegmentPracticeState(
                 playbackRate: segment.status?.customPlaybackRate ?? 1.0,
-                isFavorited: segment.status?.isFavorited ?? false,
+                isFavorited: isSegmentFavorited,
                 lastScore: segment.status?.bestScore
             )
         }
@@ -220,8 +236,21 @@ final class PodcastLearningStore {
     
     func toggleGlobalFavorite() {
         isGlobalFavorited.toggle()
+        let shouldFavorite = isGlobalFavorited
+        Task {
+            do {
+                if shouldFavorite {
+                    try await FavoriteManager.shared.favoritePodcast(podcast, context: modelContext)
+                } else {
+                    try await FavoriteManager.shared.unfavoritePodcast(podcast.id, context: modelContext)
+                }
+            } catch {
+                print("收藏整篇失败: \(error)")
+                self.isGlobalFavorited.toggle()
+            }
+        }
     }
-    
+
     func toggleLoopMode() {
         isLooping.toggle()
     }
@@ -270,8 +299,25 @@ final class PodcastLearningStore {
 
     func toggleFavorite(for segment: Podcast.Segment) {
         var state = currentState(for: segment)
+        let wasFavorited = state.isFavorited
         state.isFavorited.toggle()
         segmentStates[segment.id] = state
+        
+        Task {
+            do {
+                if state.isFavorited {
+                    try await FavoriteManager.shared.favoriteSegment(segment, from: podcast, context: modelContext)
+                } else {
+                    let segmentId = "\(podcast.id)-\(segment.id)"
+                    try await FavoriteManager.shared.unfavoriteSegment(segmentId, context: modelContext)
+                }
+            } catch {
+                print("收藏单句失败: \(error)")
+                var state = self.currentState(for: segment)
+                state.isFavorited = wasFavorited
+                self.segmentStates[segment.id] = state
+            }
+        }
     }
 
     func updatePlaybackRate(_ rate: Double, for segment: Podcast.Segment) {
@@ -384,8 +430,7 @@ final class PodcastLearningStore {
     }
 
     private func setupAudioPlayer() {
-        guard let audioURL = URL(string: podcast.audioURL), audioURL.scheme != nil else { return }
-        audioPlayer = AVPlayer(url: audioURL)
+        audioPlayer = AVPlayer(url: localAudioURL)
     }
 
     private func setupAudioSession() {

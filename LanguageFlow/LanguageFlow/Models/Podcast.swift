@@ -48,3 +48,14 @@ struct Podcast: Codable, Identifiable {
         var customPlaybackRate: Double?
     }
 }
+
+struct FavoritePodcastSegment: Identifiable {
+    let id: String
+    let podcastId: String
+    let segmentId: Int
+    let audioURL: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+    let text: String
+    let translation: String?
+}

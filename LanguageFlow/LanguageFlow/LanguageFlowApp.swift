@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct LanguageFlowApp: App {
@@ -13,5 +14,6 @@ struct LanguageFlowApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: [FavoritePodcast.self, FavoriteSegment.self])
     }
 }
