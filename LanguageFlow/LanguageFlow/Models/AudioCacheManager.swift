@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Alamofire
 
 actor AudioCacheManager {
     static let shared = AudioCacheManager()
@@ -26,7 +27,7 @@ actor AudioCacheManager {
 
     @discardableResult
     func ensureAudioCached(forPodcastId podcastId: String, remoteURL: String) async throws -> URL {
-        guard let remoteURL = URL(string: remoteURL) else {
+        guard let url = URL(string: remoteURL) else {
             throw FavoriteError.invalidAudioURL
         }
         let destination = makeDestinationURL(forPodcastId: podcastId)
@@ -34,9 +35,13 @@ actor AudioCacheManager {
             return destination
         }
         do {
-            let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
-            try? fileManager.removeItem(at: destination)
-            try fileManager.moveItem(at: tempURL, to: destination)
+            let downloadDestination: DownloadRequest.Destination = { _, _ in
+                return (destination, [.removePreviousFile, .createIntermediateDirectories])
+            }
+            _ = try await AF.download(url, to: downloadDestination)
+                .validate()
+                .serializingDownloadedFileURL()
+                .value
             return destination
         } catch {
             throw FavoriteError.downloadFailed
