@@ -11,10 +11,11 @@ class FavoriteManager {
     static let shared = FavoriteManager()
 
     private let audioCache = AudioCacheManager.shared
+    private let segmentCache = SegmentCacheManager.shared
 
     private init() {}
 
-    func favoritePodcast(_ podcast: Podcast, context: ModelContext) async throws {
+    func favoritePodcast(_ podcast: Podcast, segments: [Podcast.Segment], context: ModelContext) async throws {
         let descriptor = FetchDescriptor<FavoritePodcast>(
             predicate: #Predicate { $0.id == podcast.id }
         )
@@ -25,10 +26,8 @@ class FavoriteManager {
             context.insert(favoritePodcast)
         }
         try context.save()
-
-        Task.detached { [audioCache] in
-            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
-        }
+        try await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
+        try await segmentCache.ensureSegmentsCached(forPodcastId: podcast.id, segments: segments)
     }
 
     func unfavoritePodcast(_ podcastId: String, context: ModelContext) async throws {
@@ -44,7 +43,8 @@ class FavoriteManager {
                 )
             )
             if remainingSegments.isEmpty {
-                audioCache.deleteCachedAudio(forPodcastId: podcastId)
+                await audioCache.deleteCachedAudio(forPodcastId: podcastId)
+                await segmentCache.deleteCachedSegments(forPodcastId: podcastId)
             }
         }
     }
@@ -56,33 +56,30 @@ class FavoriteManager {
         return (try? context.fetch(descriptor).first) != nil
     }
 
-    func favoriteSegment(_ segment: Podcast.Segment, from podcast: Podcast, context: ModelContext) async throws {
+    func favoriteSegment(
+        _ segment: Podcast.Segment,
+        from podcast: Podcast,
+        context: ModelContext
+    ) async throws {
         let segmentId = "\(podcast.id)-\(segment.id)"
         let descriptor = FetchDescriptor<FavoriteSegment>(
             predicate: #Predicate { $0.id == segmentId }
         )
-        if let existing = try? context.fetch(descriptor).first {
-            existing.text = segment.text
-            existing.translation = segment.translation
-            existing.startTime = segment.start
-            existing.endTime = segment.end
-            existing.audioURL = podcast.audioURL
+        if let _ = try? context.fetch(descriptor).first {
+            return
         } else {
             let favoriteSegment = FavoriteSegment.from(segment, podcast: podcast)
             context.insert(favoriteSegment)
         }
         try context.save()
-
-        Task.detached { [audioCache] in
-            try? await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
-        }
+        try await audioCache.ensureAudioCached(forPodcastId: podcast.id, remoteURL: podcast.audioURL)
     }
 
     func unfavoriteSegment(_ segmentId: String, context: ModelContext) async throws {
         let descriptor = FetchDescriptor<FavoriteSegment>(
             predicate: #Predicate { $0.id == segmentId }
         )
-        if let favoriteSegment = try? context.fetch(descriptor).first {
+        if let favoriteSegment = try context.fetch(descriptor).first {
             let podcastId = favoriteSegment.podcastId
             context.delete(favoriteSegment)
             try context.save()
@@ -94,7 +91,7 @@ class FavoriteManager {
             )
             let hasPodcastFavorite = isPodcastFavorited(podcastId, context: context)
             if remainingSegments.isEmpty && !hasPodcastFavorite {
-                audioCache.deleteCachedAudio(forPodcastId: podcastId)
+                await audioCache.deleteCachedAudio(forPodcastId: podcastId)
             }
         }
     }
@@ -112,10 +109,6 @@ class FavoriteManager {
         )
         let favoriteSegments = try context.fetch(descriptor)
         return favoriteSegments.map { $0.toFavoritePodcastSegment() }
-    }
-
-    func cachedAudioURL(for segment: FavoritePodcastSegment) -> URL? {
-        audioCache.cachedAudioURL(forPodcastId: segment.podcastId)
     }
 
     @discardableResult

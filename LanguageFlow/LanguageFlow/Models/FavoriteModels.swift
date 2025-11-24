@@ -74,6 +74,7 @@ final class FavoritePodcast {
     var subtitle: String?
     var audioURL: String
     var language: String = ""
+    var timestamp: Int = 0
     var segmentCount: Int
     var duration: Int?
     var createdAt: Date
@@ -84,6 +85,7 @@ final class FavoritePodcast {
         self.subtitle = podcast.subtitle
         self.audioURL = podcast.audioURL
         self.language = podcast.language
+        self.timestamp = podcast.timestamp
         self.duration = podcast.duration
         self.segmentCount = podcast.segmentCount
         self.createdAt = Date()
@@ -92,7 +94,17 @@ final class FavoritePodcast {
 
 extension FavoritePodcast {
     func toPodcast() -> Podcast? {
-        // TODO: zhangpei
-        return nil
+        return Podcast(
+            id: id,
+            audioURL: audioURL,
+            title: title,
+            subtitle: subtitle,
+            timestamp: timestamp,
+            language: language,
+            segmentsTempURL: "",
+            segmentCount: segmentCount,
+            status: Podcast.Status(isFavorited: true, bestScore: nil, customPlaybackRate: nil),
+            duration: duration
+        )
     }
 }

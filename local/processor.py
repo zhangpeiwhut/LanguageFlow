@@ -103,7 +103,12 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
                 segment_with_id = segment.copy()
                 segment_with_id['id'] = i + 1  # 从1开始
                 segments_with_id.append(segment_with_id)
-            segments_key = cos_service.upload_segments_json(podcast_id, segments_with_id)
+            segments_key = cos_service.upload_segments_json(
+                podcast_id, 
+                segments_with_id,
+                channel=podcast.get('channel'),
+                timestamp=podcast.get('timestamp')
+            )
             print(f'[processor] segments上传成功: {segments_key}')
         except Exception as e:
             print(f'[processor] segments上传到COS失败: {e}')

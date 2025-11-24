@@ -137,32 +137,43 @@ struct PodcastLearningView: View {
             isLoading = true
             errorMessage = nil
             do {
+                var podcast: Podcast
                 if let cached = FavoriteManager.shared.cachedFavoritePodcast(podcastId, context: modelContext),
                    let cachedPodcast = cached.toPodcast() {
-                    let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: cachedPodcast)
-                    var segments: [Podcast.Segment] = []
-                    segments = try await PodcastAPI.shared.loadSegments(from: cachedPodcast.segmentsTempURL)
-                    store = PodcastLearningStore(
-                        podcast: cachedPodcast,
-                        segments: segments,
-                        localAudioURL: localAudioURL,
-                        modelContext: modelContext
-                    )
+                    podcast = cachedPodcast
                 } else {
-                    let loadedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
-                    let tempURL = loadedPodcast.segmentsTempURL
-                    let segments = try await PodcastAPI.shared.loadSegments(from: tempURL)
-                    guard !segments.isEmpty else {
+                    podcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
+                }
+
+                var segments: [Podcast.Segment]
+                if let cachedSegments = await SegmentCacheManager.shared.cachedSegments(forPodcastId: podcast.id) {
+                    segments = cachedSegments
+                } else {
+                    let detailedPodcast: Podcast
+                    if podcast.segmentsTempURL.isEmpty {
+                        detailedPodcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
+                    } else {
+                        detailedPodcast = podcast
+                    }
+                    podcast = detailedPodcast
+                    let fetchedSegments = try await PodcastAPI.shared.loadSegments(from: detailedPodcast.segmentsTempURL)
+                    try await SegmentCacheManager.shared.ensureSegmentsCached(forPodcastId: podcast.id, segments: fetchedSegments)
+                    guard !fetchedSegments.isEmpty else {
                         throw NSError(domain: "PodcastLoadingError", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法加载segments数据"])
                     }
-                    let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: loadedPodcast)
-                    store = PodcastLearningStore(
-                        podcast: loadedPodcast,
-                        segments: segments,
-                        localAudioURL: localAudioURL,
-                        modelContext: modelContext
-                    )
+                    segments = fetchedSegments
                 }
+
+                guard !segments.isEmpty else {
+                    throw NSError(domain: "PodcastLoadingError", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法加载segments数据"])
+                }
+                let localAudioURL = try await FavoriteManager.shared.ensureLocalAudio(for: podcast)
+                store = PodcastLearningStore(
+                    podcast: podcast,
+                    segments: segments,
+                    localAudioURL: localAudioURL,
+                    modelContext: modelContext
+                )
             } catch {
                 errorMessage = error.localizedDescription
                 print("加载podcast详情失败: \(error)")
@@ -262,7 +273,7 @@ final class PodcastLearningStore {
         Task {
             do {
                 if shouldFavorite {
-                    try await FavoriteManager.shared.favoritePodcast(podcast, context: modelContext)
+                    try await FavoriteManager.shared.favoritePodcast(podcast, segments: segments, context: modelContext)
                 } else {
                     try await FavoriteManager.shared.unfavoritePodcast(podcast.id, context: modelContext)
                 }
@@ -328,7 +339,11 @@ final class PodcastLearningStore {
         Task {
             do {
                 if state.isFavorited {
-                    try await FavoriteManager.shared.favoriteSegment(segment, from: podcast, context: modelContext)
+                    try await FavoriteManager.shared.favoriteSegment(
+                        segment,
+                        from: podcast,
+                        context: modelContext
+                    )
                 } else {
                     let segmentId = "\(podcast.id)-\(segment.id)"
                     try await FavoriteManager.shared.unfavoriteSegment(segmentId, context: modelContext)

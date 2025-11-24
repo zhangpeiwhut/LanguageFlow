@@ -16,7 +16,7 @@ PORT="${PORT:-8001}"
 check_and_free_port() {
   local port=$1
   local pid
-  pid=$(lsof -ti:"$port" 2>/dev/null)
+  pid=$(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN)
   if [ -n "$pid" ]; then
     echo "[Server] 检测到端口 ${port} 已被占用（PID: ${pid}），正在释放..."
     kill -9 "$pid" 2>/dev/null || true

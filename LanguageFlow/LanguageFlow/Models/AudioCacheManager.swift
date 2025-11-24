@@ -5,7 +5,7 @@
 
 import Foundation
 
-final class AudioCacheManager {
+actor AudioCacheManager {
     static let shared = AudioCacheManager()
 
     private let fileManager = FileManager.default
