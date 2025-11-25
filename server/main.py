@@ -151,8 +151,7 @@ async def check_podcast_complete(podcast_id: str):
 
 @router.get('/detail/{podcast_id}')
 async def get_podcast_detail_by_id(
-    podcast_id: str,
-    expires: int = Query(300, description='临时URL有效期（秒），默认300秒（5分钟）', ge=60, le=3600)
+    podcast_id: str
 ):
     """
     根据ID获取podcast详情
@@ -177,7 +176,7 @@ async def get_podcast_detail_by_id(
             raise HTTPException(status_code=500, detail='Podcast missing segmentsKey')
         
         try:
-            segments_url = cos_service.get_cdn_url(segments_key, expires=expires)
+            segments_url = cos_service.get_cdn_url(segments_key)
         except Exception as e:
             print(f'[podcast-service] 生成segments CDN URL失败: {e}')
             raise HTTPException(status_code=500, detail=f'生成segments URL失败: {str(e)}')
@@ -188,7 +187,7 @@ async def get_podcast_detail_by_id(
             raise HTTPException(status_code=500, detail='Podcast missing audioKey')
         
         try:
-            audio_url = cos_service.get_cdn_url(audio_key, expires=expires)
+            audio_url = cos_service.get_cdn_url(audio_key)
         except Exception as e:
             print(f'[podcast-service] 生成音频CDN URL失败: {e}')
             raise HTTPException(status_code=500, detail=f'生成音频URL失败: {str(e)}')
