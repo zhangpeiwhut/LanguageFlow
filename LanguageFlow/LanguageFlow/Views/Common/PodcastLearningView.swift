@@ -149,7 +149,7 @@ struct PodcastLearningView: View {
                 if let cachedSegments = await SegmentCacheManager.shared.cachedSegments(forPodcastId: podcast.id) {
                     segments = cachedSegments
                 } else {
-                    let fetchedSegments = try await PodcastAPI.shared.loadSegments(from: podcast.segmentsTempURL)
+                    let fetchedSegments = try await PodcastAPI.shared.loadSegments(from: podcast.segmentsURL)
                     try await SegmentCacheManager.shared.ensureSegmentsCached(forPodcastId: podcast.id, segments: fetchedSegments)
                     guard !fetchedSegments.isEmpty else {
                         throw NSError(domain: "PodcastLoadingError", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法加载segments数据"])

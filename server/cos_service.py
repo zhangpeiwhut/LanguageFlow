@@ -1,70 +1,63 @@
-"""腾讯云COS服务（用于server端生成预签名URL）"""
+"""腾讯云COS服务（用于server端生成CDN URL鉴权链接）"""
 import os
-from qcloud_cos import CosConfig
-from qcloud_cos import CosS3Client
-from qcloud_cos.cos_exception import CosClientError, CosServiceError
+import time
+import hashlib
 
 class COSService:
-    """腾讯云COS服务类（server端）"""
+    """腾讯云COS服务类（server端）- 使用CDN URL鉴权"""
     
     def __init__(self):
         """
         初始化COS服务
         需要设置以下环境变量：
-        - COS_SECRET_ID: 腾讯云SecretId
-        - COS_SECRET_KEY: 腾讯云SecretKey
-        - COS_REGION: COS地域，如 ap-beijing
-        - COS_BUCKET: COS存储桶名称
+        - COS_CDN_DOMAIN: CDN域名（如 https://cdn.elegantfish.online）
+        - COS_CDN_AUTH_KEY: CDN防盗链密钥（在CDN控制台配置的鉴权密钥）
         """
-        self.secret_id = os.getenv('COS_SECRET_ID')
-        self.secret_key = os.getenv('COS_SECRET_KEY')
-        self.region = os.getenv('COS_REGION', 'ap-beijing')
-        self.bucket = os.getenv('COS_BUCKET')
+        self.cdn_domain = os.getenv('COS_CDN_DOMAIN')
+        self.cdn_auth_key = os.getenv('COS_CDN_AUTH_KEY')
         
-        if not all([self.secret_id, self.secret_key, self.bucket]):
+        if not self.cdn_domain or not self.cdn_auth_key:
             # 如果缺少配置，不抛出异常，而是允许服务启动（但生成URL时会失败）
-            print('[cos-service] 警告：缺少COS配置，预签名URL功能将不可用')
-            self.client = None
+            print('[cos-service] 警告：缺少CDN配置，URL生成功能将不可用')
+            print('[cos-service] 需要设置: COS_CDN_DOMAIN 和 COS_CDN_AUTH_KEY')
+            self.cdn_domain = None
+            self.cdn_auth_key = None
             return
         
-        # 初始化COS客户端
-        config = CosConfig(
-            Region=self.region,
-            SecretId=self.secret_id,
-            SecretKey=self.secret_key,
-            Scheme='https'
-        )
-        self.client = CosS3Client(config)
+        # 确保CDN域名不以/结尾
+        self.cdn_domain = self.cdn_domain.rstrip('/')
     
-    def get_presigned_url(self, segments_key: str, expires: int = 300) -> str:
+    def get_cdn_url(self, key: str, expires: int = 180) -> str:
         """
-        生成segments JSON的预签名URL（临时访问链接）
+        生成CDN URL鉴权链接（Type A算法）
+        
+        CDN URL鉴权算法（Type A）：
+        - t = 过期时间戳（Unix时间戳，秒）
+        - sign = md5(防盗链key + path + t).lower()
+        - URL格式：https://cdn-domain.com/path?t=timestamp&sign=sign
         
         Args:
-            segments_key: segments JSON的对象Key（如 segments/{podcast_id}.json）
-            expires: URL有效期（秒），默认300秒（5分钟）
+            key: COS对象Key（如 audio/channel/2023-11-15/podcast_id.mp3）
+            expires: URL有效期（秒），默认180秒（3分钟）
             
         Returns:
-            预签名URL
+            CDN鉴权URL
         """
-        if not self.client:
-            raise Exception('COS服务未配置，无法生成预签名URL')
+        if not self.cdn_domain or not self.cdn_auth_key:
+            raise Exception('CDN服务未配置，无法生成URL。请设置 COS_CDN_DOMAIN 和 COS_CDN_AUTH_KEY')
         
-        try:
-            # 生成预签名URL
-            url = self.client.get_presigned_download_url(
-                Bucket=self.bucket,
-                Key=segments_key,
-                Expired=expires
-            )
-            return url
-        except CosClientError as e:
-            print(f'[cos-service] 生成预签名URL失败（客户端错误）: {e}')
-            raise Exception(f'生成预签名URL失败: {str(e)}')
-        except CosServiceError as e:
-            print(f'[cos-service] 生成预签名URL失败（服务端错误）: {e.get_error_code()}, {e.get_error_msg()}')
-            raise Exception(f'生成预签名URL失败: {e.get_error_msg()}')
-        except Exception as e:
-            print(f'[cos-service] 生成预签名URL失败（未知错误）: {e}')
-            raise Exception(f'生成预签名URL失败: {str(e)}')
+        # 计算过期时间戳
+        expire_timestamp = int(time.time()) + expires
+        
+        # 确保path以/开头
+        path = '/' + key.lstrip('/')
+        
+        # 计算签名：md5(防盗链key + path + t)
+        sign_string = self.cdn_auth_key + path + str(expire_timestamp)
+        sign = hashlib.md5(sign_string.encode('utf-8')).hexdigest().lower()
+        
+        # 构建URL
+        url = f"{self.cdn_domain}{path}?t={expire_timestamp}&sign={sign}"
+        
+        return url
 

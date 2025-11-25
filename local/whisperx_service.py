@@ -83,15 +83,18 @@ async def transcribe_audio_url(audio_url: str) -> Dict:
             tmp.close()
             file_size = len(response.content)
             print(f'[whisperx] 音频文件下载完成 ({file_size} bytes)')
-        return await _process_audio_file(tmp_path)
+        result = await _process_audio_file(tmp_path)
+        result['temp_file_path'] = str(tmp_path)
+        return result
     except httpx.HTTPStatusError as e:
+        _cleanup_temp_file(tmp_path)
         raise Exception(f'下载音频文件失败: {e.response.status_code}')
     except httpx.RequestError as e:
+        _cleanup_temp_file(tmp_path)
         raise Exception(f'请求音频 URL 失败: {str(e)}')
     except Exception as error:
-        raise Exception(f'转录失败: {str(error)}')
-    finally:
         _cleanup_temp_file(tmp_path)
+        raise Exception(f'转录失败: {str(error)}')
 
 
 async def _process_audio_file(tmp_path: Path) -> Dict:

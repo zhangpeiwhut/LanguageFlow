@@ -20,7 +20,7 @@ class PodcastDatabase:
                 id TEXT PRIMARY KEY,
                 company TEXT NOT NULL,
                 channel TEXT NOT NULL,
-                audioURL TEXT NOT NULL,
+                audioKey TEXT NOT NULL,
                 title TEXT,
                 titleTranslation TEXT,
                 subtitle TEXT,
@@ -60,13 +60,13 @@ class PodcastDatabase:
         # 使用INSERT OR REPLACE来避免重复
         cursor.execute("""
             INSERT OR REPLACE INTO podcasts 
-            (id, company, channel, audioURL, title, titleTranslation, subtitle, timestamp, language, duration, segmentsKey, segmentCount, updated_at)
+            (id, company, channel, audioKey, title, titleTranslation, subtitle, timestamp, language, duration, segmentsKey, segmentCount, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             podcast_id,
             podcast_data['company'],
             podcast_data['channel'],
-            podcast_data['audioURL'],
+            podcast_data['audioKey'],
             podcast_data.get('title'),
             podcast_data.get('titleTranslation'),
             podcast_data.get('subtitle'),

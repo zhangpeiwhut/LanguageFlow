@@ -43,7 +43,7 @@ def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
         (podcast_id, success) 元组
     """
     # 验证必需字段
-    required_fields = ['company', 'channel', 'audioURL', 'timestamp', 'segmentsKey', 'segmentCount']
+    required_fields = ['company', 'channel', 'audioKey', 'timestamp', 'segmentsKey', 'segmentCount']
     missing_fields = [f for f in required_fields if f not in podcast]
     if missing_fields:
         raise ValueError(f'缺少必需字段: {missing_fields}')
@@ -164,29 +164,41 @@ async def get_podcast_detail_by_id(
         if not podcast:
             raise HTTPException(status_code=404, detail='Podcast not found')
         
-        # 检查COS服务是否可用
-        if not cos_service:
+        # 检查CDN服务是否可用
+        if not cos_service or not cos_service.cdn_domain:
             raise HTTPException(
                 status_code=503,
-                detail='COS service not configured. Please set COS_SECRET_ID, COS_SECRET_KEY, and COS_BUCKET environment variables.'
+                detail='CDN service not configured. Please set COS_CDN_DOMAIN and COS_CDN_AUTH_KEY environment variables.'
             )
         
-        # 生成临时URL
+        # 生成segments CDN URL
         segments_key = podcast.get('segmentsKey')
         if not segments_key:
             raise HTTPException(status_code=500, detail='Podcast missing segmentsKey')
         
         try:
-            segments_temp_url = cos_service.get_presigned_url(segments_key, expires=expires)
+            segments_url = cos_service.get_cdn_url(segments_key, expires=expires)
         except Exception as e:
-            print(f'[podcast-service] 生成segments临时URL失败: {e}')
-            raise HTTPException(status_code=500, detail=f'生成临时URL失败: {str(e)}')
+            print(f'[podcast-service] 生成segments CDN URL失败: {e}')
+            raise HTTPException(status_code=500, detail=f'生成segments URL失败: {str(e)}')
         
-        # 返回podcast详情，包含临时URL（不暴露segmentsKey）
+        # 生成音频CDN URL
+        audio_key = podcast.get('audioKey')
+        if not audio_key:
+            raise HTTPException(status_code=500, detail='Podcast missing audioKey')
+        
+        try:
+            audio_url = cos_service.get_cdn_url(audio_key, expires=expires)
+        except Exception as e:
+            print(f'[podcast-service] 生成音频CDN URL失败: {e}')
+            raise HTTPException(status_code=500, detail=f'生成音频URL失败: {str(e)}')
+        
+        # 返回podcast详情，包含CDN URL
         result = dict(podcast)
-        result['segmentsTempURL'] = segments_temp_url
-        result['segmentsTempURLExpiresIn'] = expires
+        result['segmentsURL'] = segments_url
+        result['audioURL'] = audio_url
         result.pop('segmentsKey', None)
+        result.pop('audioKey', None)
         
         return JSONResponse({
             'success': True,
@@ -210,13 +222,13 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
         "id": "podcast_id",
         "company": "NPR",
         "channel": "All Things Considered",
-        "audioURL": "https://...",
+        "audioKey": "audio/channel/2023-11-15/podcast_id.mp3",
         "title": "Title",
         "subtitle": "Description",
         "timestamp": 1234567890,
         "language": "en",
         "duration": 3600,
-        "segmentsKey": "segments/podcast_id.json",
+        "segmentsKey": "segments/channel/2023-11-15/podcast_id.json",
         "segmentCount": 100
     }
     """

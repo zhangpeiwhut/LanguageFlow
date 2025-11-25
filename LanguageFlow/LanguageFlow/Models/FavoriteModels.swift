@@ -101,7 +101,7 @@ extension FavoritePodcast {
             subtitle: subtitle,
             timestamp: timestamp,
             language: language,
-            segmentsTempURL: "",
+            segmentsURL: "",
             segmentCount: segmentCount,
             status: Podcast.Status(isFavorited: true, bestScore: nil, customPlaybackRate: nil),
             duration: duration

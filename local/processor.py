@@ -41,10 +41,12 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
             return None
     
     # 如果没有找到完整的podcast，继续正常处理流程
+    temp_audio_path = None
     try:
         transcription_result = await transcribe_audio_url(audio_url)
         segments = transcription_result.get('segments', [])
         detected_language = transcription_result.get('language', 'en')
+        temp_audio_path = transcription_result.get('temp_file_path')  # 获取临时文件路径
         print(f'[processor] 转录完成：{len(segments)} 个片段')
     except Exception as e:
         print(f'[processor] 转录失败: {e}')
@@ -91,12 +93,29 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
         except Exception as e:
             print(f'[processor] 标题翻译失败: {e}')
     
-    # 上传segments到COS
+    # 上传音频和segments到COS
+    cos_service = COSService()
+    audio_key = None
     segments_key = None
+    
+    # 上传音频文件到COS（复用已下载的文件）
+    if temp_audio_path:
+        try:
+            print(f'[processor] 开始上传音频文件到COS（复用已下载文件）')
+            audio_key = cos_service.upload_audio_from_file(
+                file_path=temp_audio_path,
+                podcast_id=podcast_id,
+                channel=podcast.get('channel'),
+                timestamp=podcast.get('timestamp')
+            )
+            print(f'[processor] 音频文件上传成功: {audio_key}')
+        except Exception as e:
+            print(f'[processor] 音频文件上传到COS失败: {e}')
+    
+    # 上传segments到COS
     if segments:
         try:
             print(f'[processor] 开始上传segments到COS: {len(segments)} 个片段')
-            cos_service = COSService()
             # 为segments添加id字段（使用索引作为id）
             segments_with_id = []
             for i, segment in enumerate(segments):
@@ -114,11 +133,20 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
             print(f'[processor] segments上传到COS失败: {e}')
             raise Exception(f'上传segments到COS失败: {str(e)}')
     
+    # 清理临时音频文件
+    if temp_audio_path:
+        try:
+            from pathlib import Path
+            Path(temp_audio_path).unlink(missing_ok=True)
+            print(f'[processor] 已清理临时音频文件')
+        except Exception as e:
+            print(f'[processor] 清理临时文件失败: {e}')
+
     complete_podcast = {
         'id': podcast_id,
         'company': podcast.get('company', ''),
         'channel': podcast.get('channel', ''),
-        'audioURL': audio_url,
+        'audioKey': audio_key,
         'title': podcast.get('title'),
         'titleTranslation': title_translation,
         'subtitle': podcast.get('subtitle'),
