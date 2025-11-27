@@ -2,7 +2,7 @@ import SwiftUI
 
 struct GlobalPlaybackBar: View {
     let title: String
-    let subtitle: String
+    let titleTranslation: String
     let isPlaying: Bool
     let playbackRate: Double
     let progressBinding: Binding<Double>

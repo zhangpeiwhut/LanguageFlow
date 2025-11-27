@@ -71,7 +71,7 @@ final class FavoriteSegment {
 final class FavoritePodcast {
     @Attribute(.unique) var id: String
     var title: String?
-    var subtitle: String?
+    var titleTranslation: String?
     var audioURL: String
     var language: String = ""
     var timestamp: Int = 0
@@ -82,7 +82,7 @@ final class FavoritePodcast {
     init(podcast: Podcast) {
         self.id = podcast.id
         self.title = podcast.title
-        self.subtitle = podcast.subtitle
+        self.titleTranslation = podcast.titleTranslation
         self.audioURL = podcast.audioURL
         self.language = podcast.language
         self.timestamp = podcast.timestamp
@@ -98,7 +98,7 @@ extension FavoritePodcast {
             id: id,
             audioURL: audioURL,
             title: title,
-            subtitle: subtitle,
+            titleTranslation: titleTranslation,
             timestamp: timestamp,
             language: language,
             segmentsURL: "",

@@ -147,6 +147,7 @@ async def process_podcast(podcast: Dict[str, Any], uploader=None) -> Dict[str, A
         'company': podcast.get('company', ''),
         'channel': podcast.get('channel', ''),
         'audioKey': audio_key,
+        'rawAudioUrl': audio_url,
         'title': podcast.get('title'),
         'titleTranslation': title_translation,
         'subtitle': podcast.get('subtitle'),

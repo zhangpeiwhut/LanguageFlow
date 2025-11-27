@@ -8,7 +8,7 @@ import torch
 import whisperx
 import httpx
 
-WHISPERX_MODEL_ID = os.getenv('WHISPERX_MODEL_ID', 'medium')
+WHISPERX_MODEL_ID = os.getenv('WHISPERX_MODEL_ID', 'large-v3')
 WHISPERX_BATCH_SIZE = int(os.getenv('WHISPERX_BATCH_SIZE', '8'))
 WHISPERX_COMPUTE_TYPE = os.getenv('WHISPERX_COMPUTE_TYPE')
 WHISPERX_DEVICE_OVERRIDE = os.getenv('WHISPERX_DEVICE')
@@ -32,6 +32,8 @@ class WhisperResources:
         self.model = None
         self.align_models: Dict[str, Tuple[object, dict]] = {}
         self.lock = asyncio.Lock()
+        # 使用信号量限制 WhisperX 同时只能处理一个音频（因为模型不是线程安全的）
+        self.semaphore = asyncio.Semaphore(1)
 
     async def ensure_model(self):
         if self.model:
@@ -100,58 +102,69 @@ async def transcribe_audio_url(audio_url: str) -> Dict:
 async def _process_audio_file(tmp_path: Path) -> Dict:
     start_time = time.time()
     await resources.ensure_model()
-    file_size = tmp_path.stat().st_size
-    print(f'[whisperx] 音频文件已保存 ({file_size} bytes)，开始转录...')
-    loop = asyncio.get_event_loop()
-    def _run_transcribe():
-        return resources.model.transcribe(
-            str(tmp_path),
-            batch_size=WHISPERX_BATCH_SIZE,
-        )
-    transcribe_start = time.time()
-    result = await loop.run_in_executor(None, _run_transcribe)
-    transcribe_time = time.time() - transcribe_start
-    segments = result.get('segments') or []
-    language = result.get('language') or 'en'
-    print(f'[whisperx] 转录完成（耗时 {transcribe_time:.2f}s）：检测到 {len(segments)} 个片段，语言: {language}')
-    try:
-        print(f'[whisperx] 开始对齐时间戳...')
-        align_start = time.time()
-        align_model, metadata = await resources.get_align_model(language)
-        aligned = whisperx.align(
-            segments,
-            align_model,
-            metadata,
-            str(tmp_path),
-            DEVICE,
-            return_char_alignments=False,
-        )
-        segments = aligned.get('segments') or segments
-        align_time = time.time() - align_start
-        print(f'[whisperx] 对齐完成（耗时 {align_time:.2f}s）')
-    except Exception as error:
-        print(f'[warn] align failed: {error}')
-    payload = []
-    for index, segment in enumerate(segments):
-        start = float(segment.get('start') or 0)
-        end = float(segment.get('end') or start)
-        payload.append(
-            {
-                'text': segment.get('text') or '',
-                'start': max(0.0, start),
-                'end': max(start, end),
+
+    # 使用信号量确保同时只有一个音频在处理（WhisperX 模型不是线程安全的）
+    async with resources.semaphore:
+        file_size = tmp_path.stat().st_size
+        print(f'[whisperx] 音频文件已保存 ({file_size} bytes)，开始转录...')
+        loop = asyncio.get_event_loop()
+
+        def _run_transcribe():
+            return resources.model.transcribe(
+                str(tmp_path),
+                batch_size=WHISPERX_BATCH_SIZE,
+            )
+        transcribe_start = time.time()
+        result = await loop.run_in_executor(None, _run_transcribe)
+        transcribe_time = time.time() - transcribe_start
+        segments = result.get('segments') or []
+        language = result.get('language') or 'en'
+        print(f'[whisperx] 转录完成（耗时 {transcribe_time:.2f}s）：检测到 {len(segments)} 个片段，语言: {language}')
+
+        try:
+            print(f'[whisperx] 开始对齐时间戳...')
+            align_start = time.time()
+            align_model, metadata = await resources.get_align_model(language)
+
+            # 将同步的 align 操作放到 executor 中执行，避免阻塞 event loop
+            def _run_align():
+                return whisperx.align(
+                    segments,
+                    align_model,
+                    metadata,
+                    str(tmp_path),
+                    DEVICE,
+                    return_char_alignments=False,
+                )
+
+            aligned = await loop.run_in_executor(None, _run_align)
+            segments = aligned.get('segments') or segments
+            align_time = time.time() - align_start
+            print(f'[whisperx] 对齐完成（耗时 {align_time:.2f}s）')
+        except Exception as error:
+            print(f'[warn] align failed: {error}')
+
+        payload = []
+        for index, segment in enumerate(segments):
+            start = float(segment.get('start') or 0)
+            end = float(segment.get('end') or start)
+            payload.append(
+                {
+                    'text': segment.get('text') or '',
+                    'start': max(0.0, start),
+                    'end': max(start, end),
+                }
+            )
+        total_time = time.time() - start_time
+        print(f'[whisperx] 全部处理完成（总耗时 {total_time:.2f}s）')
+        return {
+            'segments': payload,
+            'language': language,
+            'stats': {
+                'total_segments': len(payload),
+                'processing_time': round(total_time, 2),
             }
-        )    
-    total_time = time.time() - start_time
-    print(f'[whisperx] 全部处理完成（总耗时 {total_time:.2f}s）')
-    return {
-        'segments': payload,
-        'language': language,
-        'stats': {
-            'total_segments': len(payload),
-            'processing_time': round(total_time, 2),
         }
-    }
 def _cleanup_temp_file(path: Path):
     try:
         path.unlink(missing_ok=True)

@@ -13,15 +13,15 @@ struct FavoritePodcastsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoritePodcast.createdAt, order: .reverse) private var favoritePodcastsData: [FavoritePodcast]
     @State private var favoritePodcasts: [FavoritePodcast] = []
-    @State private var presentingPodcast: FavoritePodcast?
+    @State private var navigationPath = NavigationPath()
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if favoritePodcasts.isEmpty {
                     emptyState(
                         systemImage: "text.book.closed",
-                        title: "暂无整篇收藏",
+                        title: "暂无书签",
                         message: "收藏整篇后会显示在这里"
                     )
                 } else {
@@ -30,11 +30,11 @@ struct FavoritePodcastsView: View {
                             ForEach(favoritePodcasts, id: \.id) { podcast in
                                 FavoritePodcastCard(
                                     title: podcast.title ?? "未命名节目",
-                                    subtitle: podcast.subtitle,
+                                    titleTranslation: podcast.titleTranslation,
                                     durationText: durationText(for: podcast),
                                     segmentText: segmentText(for: podcast),
                                     onOpen: {
-                                        presentingPodcast = podcast
+                                        navigationPath.append(podcast.id)
                                     },
                                     onUnfavorite: {
                                         Task {
@@ -56,11 +56,12 @@ struct FavoritePodcastsView: View {
                     .background(Color(uiColor: .systemGroupedBackground))
                 }
             }
-            .navigationTitle("整篇收藏")
+            .navigationTitle("书签")
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear(perform: syncFavorites)
             .onChange(of: favoritePodcastsData.count) { _, _ in syncFavorites() }
-            .fullScreenCover(item: $presentingPodcast) { podcast in
-                PodcastLearningView(podcastId: podcast.id)
+            .navigationDestination(for: String.self) { podcastId in
+                PodcastLearningView(podcastId: podcastId)
             }
         }
     }
@@ -100,7 +101,7 @@ private extension FavoritePodcastsView {
 
 private struct FavoritePodcastCard: View {
     let title: String
-    let subtitle: String?
+    let titleTranslation: String?
     let durationText: String
     let segmentText: String
     let onOpen: () -> Void
@@ -113,11 +114,10 @@ private struct FavoritePodcastCard: View {
                 .foregroundColor(.primary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
+            if let titleTranslation, !titleTranslation.isEmpty {
+                Text(titleTranslation)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                    .lineLimit(2)
             }
             HStack(spacing: 10) {
                 Text("\(durationText) • \(segmentText)")

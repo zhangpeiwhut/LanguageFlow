@@ -102,6 +102,14 @@ class FavoriteManager {
         )
         return (try? context.fetch(descriptor).first) != nil
     }
+
+    func favoriteSegmentIDs(forPodcastId podcastId: String, context: ModelContext) -> Set<String> {
+        let descriptor = FetchDescriptor<FavoriteSegment>(
+            predicate: #Predicate { $0.podcastId == podcastId }
+        )
+        let favorites = (try? context.fetch(descriptor)) ?? []
+        return Set(favorites.map { $0.id })
+    }
     
     func getAllFavoriteSegments(context: ModelContext) throws -> [FavoritePodcastSegment] {
         let descriptor = FetchDescriptor<FavoriteSegment>(

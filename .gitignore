@@ -6,3 +6,14 @@
 /LanguageFlow/LanguageFlow.xcodeproj/xcuserdata
 *.log
 .DS_Store
+
+# VOA 本地存档（文件太大，不适合 git）
+/local/voa_archive/
+/local/voa_podcasts.csv
+/local/voa_metadata.json
+/local/voa_processing_state.json
+
+# 保留脚本（不 ignore）
+# !voa_rss_scraper.py
+# !voa_processor.py
+# !voa_uploader.py

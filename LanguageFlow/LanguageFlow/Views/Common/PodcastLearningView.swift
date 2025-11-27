@@ -17,6 +17,7 @@ struct PodcastLearningView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var store: PodcastLearningStore?
+    @State private var lookupWord: LookupWord?
 
     init(podcastId: String) {
         self.podcastId = podcastId
@@ -60,65 +61,53 @@ struct PodcastLearningView: View {
                     }
                     .padding()
                 } else if let store = store {
-                    VStack(spacing: 0) {
-                        HStack(alignment: .center, spacing: 10) {
-                            backButton
-                            Text(store.podcast.title ?? "Podcast")
-                                .font(.headline.weight(.semibold))
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .fixedSize(horizontal: false, vertical: true)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                podcastTitleSection(for: store)
+                                SegmentListView(store: store) { word in
+                                    lookupWord = LookupWord(word: word)
+                                }
+                            }
+                            .padding(.top, 8)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 44)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
-                        .background(.ultraThinMaterial)
-                        
-                        ScrollViewReader { proxy in
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    SegmentListView(store: store)
-                                }
-                                .padding(.top, 8)
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 44)
+                        .background(Color(.systemGroupedBackground))
+                        .onChange(of: store.currentSegmentID) { _, newValue in
+                            guard let id = newValue else { return }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                proxy.scrollTo(id, anchor: .center)
                             }
-                            .background(Color(.systemGroupedBackground))
-                            .onChange(of: store.currentSegmentID) { _, newValue in
-                                guard let id = newValue else { return }
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    proxy.scrollTo(id, anchor: .center)
-                                }
-                            }
-                            .safeAreaInset(edge: .bottom) {
-                                GlobalPlaybackBar(
-                                    title: store.podcast.title ?? "Podcast",
-                                    subtitle: store.podcast.subtitle ?? "",
-                                    isPlaying: store.isGlobalPlaying,
-                                    playbackRate: store.globalPlaybackRate,
-                                    progressBinding: Binding(
-                                        get: {
-                                            guard store.totalDuration > 0 else { return 0 }
-                                            return min(max(store.currentTime / store.totalDuration, 0), 1)
-                                        },
-                                        set: { store.jumpTo(progress: $0) }
-                                    ),
-                                    currentTime: store.currentTime,
-                                    duration: store.totalDuration,
-                                    onTogglePlay: store.toggleGlobalPlayback,
-                                    onChangeRate: store.changeGlobalPlaybackRate,
-                                    onSeekEditingChanged: store.handleSeekEditingChanged,
-                                    isFavorited: store.isGlobalFavorited,
-                                    onToggleFavorite: store.toggleGlobalFavorite,
-                                    isLooping: store.isLooping,
-                                    areTranslationsHidden: store.areTranslationsHidden,
-                                    onToggleLoopMode: store.toggleLoopMode,
-                                    onToggleTranslations: store.toggleTranslationVisibility
-                                )
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
-                                .background(Color.clear.ignoresSafeArea())
-                            }
+                        }
+                        .safeAreaInset(edge: .bottom) {
+                            GlobalPlaybackBar(
+                                title: store.podcast.title ?? "Podcast",
+                                titleTranslation: store.podcast.titleTranslation ?? "",
+                                isPlaying: store.isGlobalPlaying,
+                                playbackRate: store.globalPlaybackRate,
+                                progressBinding: Binding(
+                                    get: {
+                                        guard store.totalDuration > 0 else { return 0 }
+                                        return min(max(store.currentTime / store.totalDuration, 0), 1)
+                                    },
+                                    set: { store.jumpTo(progress: $0) }
+                                ),
+                                currentTime: store.currentTime,
+                                duration: store.totalDuration,
+                                onTogglePlay: store.toggleGlobalPlayback,
+                                onChangeRate: store.changeGlobalPlaybackRate,
+                                onSeekEditingChanged: store.handleSeekEditingChanged,
+                                isFavorited: store.isGlobalFavorited,
+                                onToggleFavorite: store.toggleGlobalFavorite,
+                                isLooping: store.isLooping,
+                                areTranslationsHidden: store.areTranslationsHidden,
+                                onToggleLoopMode: store.toggleLoopMode,
+                                onToggleTranslations: store.toggleTranslationVisibility
+                            )
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color.clear.ignoresSafeArea())
                         }
                     }
                 } else {
@@ -129,6 +118,40 @@ struct PodcastLearningView: View {
         }
         .task {
             loadPodcast()
+        }
+        .toolbar(.hidden, for: .tabBar)
+        .sheet(item: $lookupWord) { item in
+            DictionaryLookupView(word: item.word)
+                .presentationDetents([.medium])
+        }
+    }
+
+    private struct LookupWord: Identifiable, Equatable {
+        let word: String
+        var id: String { word }
+    }
+
+    @ViewBuilder
+    private func podcastTitleSection(for store: PodcastLearningStore) -> some View {
+        if let title = store.podcast.title, !title.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                if let translation = store.podcast.titleTranslation, !translation.isEmpty {
+                    Text(translation)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .blur(radius: store.areTranslationsHidden ? 5 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: store.areTranslationsHidden)
+                }
+            }
+            .padding(.horizontal, 2)
         }
     }
     
@@ -197,6 +220,7 @@ final class PodcastLearningStore {
     @ObservationIgnored private var isGlobalMode = false
     @ObservationIgnored private var shouldResumeAfterSeek = false
     @ObservationIgnored private var isScrubbing = false
+    @ObservationIgnored private var isAudioSessionActive = false
     @ObservationIgnored private let localAudioURL: URL
 
     init(podcast: Podcast, segments: [Podcast.Segment], localAudioURL: URL, modelContext: ModelContext) {
@@ -206,10 +230,11 @@ final class PodcastLearningStore {
         self.localAudioURL = localAudioURL
         let locallyFavorited = FavoriteManager.shared.isPodcastFavorited(podcast.id, context: modelContext)
         self.isGlobalFavorited = locallyFavorited || (podcast.status?.isFavorited ?? false)
+        let favoritedSegmentIDs = FavoriteManager.shared.favoriteSegmentIDs(forPodcastId: podcast.id, context: modelContext)
         
         for segment in segments {
             let segmentId = "\(podcast.id)-\(segment.id)"
-            let isSegmentFavorited = FavoriteManager.shared.isSegmentFavorited(segmentId, context: modelContext)
+            let isSegmentFavorited = favoritedSegmentIDs.contains(segmentId)
             segmentStates[segment.id] = SegmentPracticeState(
                 playbackRate: segment.status?.customPlaybackRate ?? 1.0,
                 isFavorited: isSegmentFavorited,
@@ -221,7 +246,6 @@ final class PodcastLearningStore {
             currentTime = firstSegment.start
         }
         setupAudioPlayer()
-        setupAudioSession()
     }
     
     deinit {
@@ -463,11 +487,13 @@ final class PodcastLearningStore {
         audioPlayer = AVPlayer(url: localAudioURL)
     }
 
-    private func setupAudioSession() {
+    private func activateAudioSessionIfNeeded() {
+        guard !isAudioSessionActive else { return }
         do {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, options: [.allowBluetoothA2DP])
             try audioSession.setActive(true)
+            isAudioSessionActive = true
         } catch {
             print("Failed to setup audio session: \(error)")
         }
@@ -501,6 +527,7 @@ final class PodcastLearningStore {
     }
     
     private func playSegment(_ segment: Podcast.Segment, useGlobalRate: Bool = false) {
+        activateAudioSessionIfNeeded()
         guard let player = audioPlayer else {
             setupAudioPlayer()
             guard audioPlayer != nil else { return }

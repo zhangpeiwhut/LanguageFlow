@@ -1,0 +1,112 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "92D382D1",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6755928466",
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_developerTeamID" : "B8L26345XW",
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 786206296.05539,
+    "_locale" : "zh_Hans",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "CHN",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21845863",
+      "localizations" : [
+
+      ],
+      "name" : "LanguageFlow Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "18.0",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6755929169",
+          "introductoryOffer" : {
+            "internalID" : "7895FA74",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "解锁 LanguageFlow 的全部功能。 免费试用 3 天，之后每月自动续订。您可以随时取消。",
+              "displayName" : "LanguageFlow 月订阅",
+              "locale" : "zh_Hans"
+            }
+          ],
+          "productID" : "lf.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly",
+          "subscriptionGroupID" : "21845863",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "128.0",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6755929297",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "解锁 LanguageFlow 的全部功能。 每年自动续订。您可以随时取消。",
+              "displayName" : "LanguageFlow 年订阅",
+              "locale" : "zh_Hans"
+            }
+          ],
+          "productID" : "lf.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Yearly",
+          "subscriptionGroupID" : "21845863",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

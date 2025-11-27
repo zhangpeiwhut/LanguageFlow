@@ -11,7 +11,7 @@ from .utils import ResponseParser
 
 XYKS_API_KEY = os.getenv('XYKS_API_KEY', '')
 XYKS_API_ENDPOINT = 'https://leo.zhenguanyu.com/leo-cms-python/llm/chat'
-XYKS_MODEL = os.getenv('XYKS_MODEL', 'gpt-4o-mini')
+XYKS_MODEL = os.getenv('XYKS_MODEL', 'gpt-4o')
 XYKS_BIZ = int(os.getenv('XYKS_BIZ', '6'))
 
 

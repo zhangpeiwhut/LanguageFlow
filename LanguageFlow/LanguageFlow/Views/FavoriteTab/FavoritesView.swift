@@ -14,7 +14,6 @@ struct FavoriteSegmentsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoriteSegment.createdAt, order: .reverse) private var favoriteSegmentsData: [FavoriteSegment]
     @State private var favoriteSegments: [FavoritePodcastSegment] = []
-    @State private var errorMessage: String?
     @State private var segmentPlayer: SegmentInlinePlayer?
     @State private var segmentPlaybackRates: [String: Double] = [:]
     @State private var segmentTranslationVisibility: [String: Bool] = [:]
@@ -22,24 +21,7 @@ struct FavoriteSegmentsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let errorMessage {
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                            .foregroundColor(.orange)
-                        Text("加载失败")
-                            .font(.headline)
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button("重试") {
-                            syncFavorites()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                } else if favoriteSegments.isEmpty {
+                if favoriteSegments.isEmpty {
                     emptyState(
                         systemImage: "text.quote",
                         title: "暂无单句收藏",
@@ -90,7 +72,8 @@ struct FavoriteSegmentsView: View {
                     .background(Color(uiColor: .systemGroupedBackground))
                 }
             }
-            .navigationTitle("单句收藏")
+            .navigationTitle("收藏")
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear(perform: syncFavorites)
             .onChange(of: favoriteSegmentsData.count) { _, _ in syncFavorites() }
             .onDisappear {
@@ -117,7 +100,6 @@ private extension FavoriteSegmentsView {
     }
     
     func syncFavorites() {
-        errorMessage = nil
         favoriteSegments = favoriteSegmentsData.map { $0.toFavoritePodcastSegment() }
         let ids = Set(favoriteSegments.map(\.id))
         segmentPlaybackRates = segmentPlaybackRates.filter { ids.contains($0.key) }
@@ -144,7 +126,6 @@ private extension FavoriteSegmentsView {
             let rate = segmentPlaybackRates[segment.id] ?? 1.0
             let didPrepare = await player.prepareAndPlay(playbackRate: rate)
             if !didPrepare {
-                errorMessage = "音频不可用，请稍后重试"
                 segmentPlayer = nil
             }
         }

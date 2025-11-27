@@ -4,6 +4,7 @@ import Foundation
 
 struct SegmentListView: View {
     @Bindable var store: PodcastLearningStore
+    var onLookup: (String) -> Void
 
     var body: some View {
         LazyVStack(spacing: 12) {
@@ -22,7 +23,8 @@ struct SegmentListView: View {
                     onFavorite: { store.toggleFavorite(for: segment) },
                     onRateChange: { rate in store.updatePlaybackRate(rate, for: segment) },
                     onAttemptChange: { text in store.updateAttempt(text, for: segment) },
-                    onToggleTranslation: { store.toggleTranslation(for: segment) }
+                    onToggleTranslation: { store.toggleTranslation(for: segment) },
+                    onLookup: onLookup
                 )
                 .id(segment.id)
                 .animation(.easeInOut(duration: 0.25), value: store.currentSegmentID == segment.id)
@@ -43,15 +45,18 @@ private struct SegmentPracticeCard: View {
     let onRateChange: (Double) -> Void
     let onAttemptChange: (String) -> Void
     let onToggleTranslation: () -> Void
+    let onLookup: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             numberTag()
             
-            Text(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            InteractiveWordText(
+                text: segment.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                onLookup: onLookup
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
 
             if let translation = segment.translation {
                 Text(translation)

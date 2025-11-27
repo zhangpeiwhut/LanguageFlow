@@ -27,7 +27,7 @@ struct Podcast: Codable, Identifiable {
     let id: String
     let audioURL: String
     let title: String?
-    let subtitle: String?
+    let titleTranslation: String?
     let timestamp: Int
     let language: String
     let segmentsURL: String

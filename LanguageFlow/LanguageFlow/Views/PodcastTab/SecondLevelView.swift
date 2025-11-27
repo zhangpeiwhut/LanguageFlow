@@ -10,7 +10,7 @@ struct SecondLevelView: View {
     @State private var timestamps: [Int] = []
     @State private var selectedTimestamp: Int?
     @State private var podcasts: [PodcastSummary] = []
-    @State private var presentingPodcast: PodcastSummary?
+    @State private var cachedPodcasts: [Int: [PodcastSummary]] = [:]
     @State private var isLoadingDates = false
     @State private var isLoadingPodcasts = false
     @State private var errorMessage: String?
@@ -48,8 +48,8 @@ struct SecondLevelView: View {
                             } else {
                                 LazyVStack(spacing: 14) {
                                     ForEach(podcasts) { podcast in
-                                        Button {
-                                            presentingPodcast = podcast
+                                        NavigationLink {
+                                            PodcastLearningView(podcastId: podcast.id)
                                         } label: {
                                             PodcastCardView(
                                                 podcast: podcast,
@@ -94,9 +94,6 @@ struct SecondLevelView: View {
             guard let newValue else { return }
             loadPodcasts(for: newValue)
         }
-        .fullScreenCover(item: $presentingPodcast) { podcast in
-            PodcastLearningView(podcastId: podcast.id)
-        }
     }
 
     private var dateSelector: some View {
@@ -108,10 +105,10 @@ struct SecondLevelView: View {
                         selectedTimestamp = timestamp
                     } label: {
                         Text(label)
-                            .font(.subheadline)
+                            .font(.footnote)
                             .fontWeight(.semibold)
                             .foregroundColor(selectedTimestamp == timestamp ? .accentColor : .primary)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 5)
                             .padding(.horizontal, 10)
                             .frame(minWidth: 60)
                         .background(
@@ -126,8 +123,7 @@ struct SecondLevelView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 6)
-            .padding(.bottom, 16)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(uiColor: .systemGroupedBackground))
@@ -145,7 +141,7 @@ private extension SecondLevelView {
                     company: channel.company,
                     channel: channel.channel
                 )
-                timestamps = Array(timestamps.prefix(7))
+                timestamps = Array(timestamps.prefix(30))
                 if let firstTimestamp = timestamps.first {
                     selectedTimestamp = firstTimestamp
                 }
@@ -158,6 +154,11 @@ private extension SecondLevelView {
     }
 
     func loadPodcasts(for timestamp: Int) {
+        if let cached = cachedPodcasts[timestamp] {
+            podcasts = cached
+            return
+        }
+
         Task { @MainActor in
             isLoadingPodcasts = true
             do {
@@ -166,6 +167,7 @@ private extension SecondLevelView {
                     channel: channel.channel,
                     timestamp: timestamp
                 )
+                cachedPodcasts[timestamp] = podcasts
             } catch {
                 print("加载podcasts失败: \(error)")
                 podcasts = []
@@ -201,11 +203,13 @@ struct PodcastCardView: View {
     let durationText: String
     let segmentText: String
 
-    private var displayTitle: String {
-        if showTranslation {
-            return stripTrailingPeriod(podcast.titleTranslation ?? podcast.title ?? "无标题")
-        }
-        return stripTrailingPeriod(podcast.title ?? podcast.titleTranslation ?? "无标题")
+    private var originalTitle: String {
+        stripTrailingPeriod(podcast.title ?? podcast.titleTranslation ?? "无标题")
+    }
+
+    private var translatedTitle: String? {
+        guard let translation = podcast.titleTranslation, !translation.isEmpty else { return nil }
+        return stripTrailingPeriod(translation)
     }
 
     private func stripTrailingPeriod(_ text: String) -> String {
@@ -218,11 +222,21 @@ struct PodcastCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(displayTitle)
-                .font(.headline)
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(originalTitle)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let translatedTitle {
+                    Text(translatedTitle)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .blur(radius: showTranslation ? 0 : 5)
+                        .animation(.easeInOut(duration: 0.2), value: showTranslation)
+                }
+            }
 
             Text("\(durationText) • \(segmentText)")
                 .font(.caption2)

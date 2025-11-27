@@ -46,6 +46,8 @@ struct FirstLevelView: View {
                     }
                 }
             }
+            .navigationTitle("频道")
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 loadChannels()
             }

@@ -12,17 +12,22 @@ struct ContentView: View {
         TabView {
             FirstLevelView()
                 .tabItem {
-                    Label("频道", systemImage: "radio")
+                    Image(systemName: "radio")
                 }
 
             FavoritePodcastsView()
                 .tabItem {
-                    Label("整篇", systemImage: "text.book.closed")
+                    Image(systemName: "bookmark")
                 }
 
             FavoriteSegmentsView()
                 .tabItem {
-                    Label("单句", systemImage: "text.quote")
+                    Image(systemName: "heart")
+                }
+
+            SubscriptionView()
+                .tabItem {
+                    Image(systemName: "flame")
                 }
         }
     }
