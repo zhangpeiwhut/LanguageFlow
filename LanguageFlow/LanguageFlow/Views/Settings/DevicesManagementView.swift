@@ -13,7 +13,7 @@ struct DevicesManagementView: View {
     @State private var showAlert = false
     @State private var deviceToUnbind: BoundDevice?
 
-    private let baseURL = "https://elegantfish.online"
+    private let baseURL = "https://elegantfish.online/podcast"
 
     var body: some View {
         List {

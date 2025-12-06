@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from fastapi import FastAPI, HTTPException, Query, APIRouter, Body, Header, Depends
+from fastapi import FastAPI, HTTPException, Query, APIRouter, Body, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Annotated
@@ -27,10 +27,10 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-podcast_router = APIRouter(prefix="/podcast", tags=["podcast"])
-auth_router = APIRouter(prefix="/auth", tags=["authentication"])
-payment_router = APIRouter(prefix="/payment", tags=["payment"])
-user_router = APIRouter(prefix="/user", tags=["user"])
+podcast_router = APIRouter(prefix="/podcast/info", tags=["podcast"])
+auth_router = APIRouter(prefix="/podcast/auth", tags=["authentication"])
+payment_router = APIRouter(prefix="/podcast/payment", tags=["payment"])
+user_router = APIRouter(prefix="/podcast/user", tags=["user"])
 
 # 初始化数据库
 db_path = os.getenv("DB_PATH", "podcasts.db")
@@ -88,9 +88,7 @@ async def get_podcasts(
 
 
 @podcast_router.get('/channels')
-async def get_all_channels(
-    _: Annotated[str, Depends(get_current_device_uuid)]
-):
+async def get_all_channels():
     """
     获取所有的podcast频道列表
     Returns:

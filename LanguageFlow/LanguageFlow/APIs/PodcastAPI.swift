@@ -19,7 +19,7 @@ class PodcastAPI {
 
     func getAllChannels() async throws -> [Channel] {
         return try await NetworkManager.shared.request(
-            "\(baseURL)/channels",
+            "\(baseURL)/info/channels",
             method: .get
         )
         .validate()
@@ -30,7 +30,7 @@ class PodcastAPI {
 
     func getChannelDates(company: String, channel: String) async throws -> [Int] {
         return try await NetworkManager.shared.request(
-            "\(baseURL)/channels/\(company)/\(channel)/dates",
+            "\(baseURL)/info/channels/\(company)/\(channel)/dates",
             method: .get
         )
         .validate()
@@ -41,7 +41,7 @@ class PodcastAPI {
 
     func getChannelPodcasts(company: String, channel: String, timestamp: Int) async throws -> [PodcastSummary] {
         return try await NetworkManager.shared.request(
-            "\(baseURL)/channels/\(company)/\(channel)/podcasts",
+            "\(baseURL)/info/channels/\(company)/\(channel)/podcasts",
             method: .get,
             parameters: ["timestamp": timestamp]
         )
@@ -53,7 +53,7 @@ class PodcastAPI {
 
     func getPodcastDetailById(_ id: String) async throws -> Podcast {
         return try await NetworkManager.shared.request(
-            "\(baseURL)/detail/\(id)",
+            "\(baseURL)/info/detail/\(id)",
             method: .get
         )
         .validate()

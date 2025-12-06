@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from cos_service import COSService
 from uploader import PodcastUploader
-from voa_processor import (
+from voa_config import (
     VOA_ARCHIVE_DIR,
     VOA_METADATA_FILE,
     VOA_STATE_FILE
@@ -131,6 +131,14 @@ class VoaUploader:
 
         return cos_keys
 
+    def _sanitize_value(self, value):
+        """清理无效的浮点数值（NaN, Infinity）转为 None"""
+        import math
+        if value is not None and isinstance(value, float):
+            if math.isnan(value) or math.isinf(value):
+                return None
+        return value
+
     async def upload_podcast_to_server(self, podcast: Dict[str, Any], cos_keys: Dict[str, str]) -> bool:
         """
         上传 podcast 元数据到服务端
@@ -149,7 +157,7 @@ class VoaUploader:
             print(f'[voa-uploader] 已上传到服务端，跳过: {podcast_id}')
             return True
 
-        # 构建上传数据（不包含本地路径）
+        # 构建上传数据（不包含本地路径，清理无效值）
         upload_data = {
             'id': podcast_id,
             'company': podcast['company'],
@@ -157,11 +165,11 @@ class VoaUploader:
             'audioKey': cos_keys['audioKey'],
             'rawAudioUrl': podcast['audioURL'],
             'title': podcast['title'],
-            'titleTranslation': podcast.get('titleTranslation'),
-            'subtitle': podcast.get('subtitle'),
+            'titleTranslation': self._sanitize_value(podcast.get('titleTranslation')),
+            'subtitle': self._sanitize_value(podcast.get('subtitle')),
             'timestamp': podcast['timestamp'],
             'language': podcast['language'],
-            'duration': podcast.get('duration'),
+            'duration': self._sanitize_value(podcast.get('duration')),
             'segmentsKey': cos_keys['segmentsKey'],
             'segmentCount': podcast['segmentCount']
         }

@@ -20,7 +20,7 @@ final class IAPManager {
     var isLoading: Bool = false
 
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
-    private let baseURL = "https://elegantfish.online"
+    private let baseURL = "https://elegantfish.online/podcast"
 
     init() {
         updatesTask = Task { await observeTransactionUpdates() }

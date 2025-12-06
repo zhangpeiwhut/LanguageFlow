@@ -19,6 +19,13 @@ import httpx
 import time
 from whisperx_service import _process_audio_file
 from translator import translate_segments, get_translator
+from voa_config import (
+    VOA_ARCHIVE_DIR,
+    VOA_AUDIO_DIR,
+    VOA_SEGMENTS_DIR,
+    VOA_METADATA_FILE,
+    VOA_STATE_FILE
+)
 
 
 def generate_podcast_id(company: str, channel: str, timestamp: int, audio_url: str, title: Optional[str] = None) -> str:
@@ -30,13 +37,6 @@ def generate_podcast_id(company: str, channel: str, timestamp: int, audio_url: s
     content = f"{normalized_company}|{normalized_channel}|{timestamp}|{normalized_url}|{normalized_title}"
     hash_obj = hashlib.sha256(content.encode('utf-8'))
     return hash_obj.hexdigest()[:32]
-
-# 本地存档目录配置
-VOA_ARCHIVE_DIR = Path(__file__).parent / "voa_archive"
-VOA_AUDIO_DIR = VOA_ARCHIVE_DIR / "audio"
-VOA_SEGMENTS_DIR = VOA_ARCHIVE_DIR / "segments"
-VOA_METADATA_FILE = VOA_ARCHIVE_DIR / "metadata.json"
-VOA_STATE_FILE = VOA_ARCHIVE_DIR / "processing_state.json"
 
 class VoaProcessor:
     """VOA 本地处理器"""
@@ -62,6 +62,14 @@ class VoaProcessor:
         VOA_ARCHIVE_DIR.mkdir(exist_ok=True)
         VOA_AUDIO_DIR.mkdir(exist_ok=True)
         VOA_SEGMENTS_DIR.mkdir(exist_ok=True)
+
+    def _sanitize_value(self, value):
+        """清理无效的浮点数值（NaN, Infinity）转为 None"""
+        import math
+        if value is not None and isinstance(value, float):
+            if math.isnan(value) or math.isinf(value):
+                return None
+        return value
 
     def _load_state(self) -> Dict:
         """加载处理状态"""
@@ -311,7 +319,7 @@ class VoaProcessor:
             print(f'[voa-processor] 保存 segments 失败: {e}')
             return None
 
-        # 6. 构建完整的 podcast 元数据
+        # 6. 构建完整的 podcast 元数据（清理 NaN 值）
         complete_podcast = {
             'id': podcast_id,
             'company': podcast['company'],
@@ -321,10 +329,10 @@ class VoaProcessor:
             'localSegmentsPath': str(segments_path),
             'title': podcast['title'],
             'titleTranslation': title_translation,
-            'subtitle': podcast.get('subtitle'),
+            'subtitle': self._sanitize_value(podcast.get('subtitle')),
             'timestamp': podcast['timestamp'],
             'language': detected_language,
-            'duration': podcast.get('duration'),
+            'duration': self._sanitize_value(podcast.get('duration')),
             'segmentCount': len(segments),
             'status': 'local_only'  # 标记为仅本地
         }

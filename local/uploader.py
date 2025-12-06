@@ -12,7 +12,7 @@ class PodcastUploader:
             server_url: 服务器URL，例如 'http://localhost:8001' 或 'https://elegantfish.online'
         """
         self.server_url = server_url.rstrip('/')
-        self.base_url = f'{self.server_url}/podcast'
+        self.base_url = f'{self.server_url}/podcast/info'
     
     async def check_podcast_complete(self, podcast_id: str) -> bool:
         """

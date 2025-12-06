@@ -8,7 +8,7 @@
 import Foundation
 import Alamofire
 
-class AuthInterceptor: RequestInterceptor {
+final class AuthInterceptor: RequestInterceptor {
     private var isRefreshing = false
     private var requestsToRetry: [(RetryResult) -> Void] = []
 
@@ -21,8 +21,15 @@ class AuthInterceptor: RequestInterceptor {
     ) {
         var urlRequest = urlRequest
 
-        // 如果是 /auth/register 接口，不需要添加 Token
-        if urlRequest.url?.path.contains("/auth/register") == true {
+        // 不需要鉴权的接口白名单
+        let noAuthPaths = [
+            "/auth/register",
+            "/info/channels"
+        ]
+        
+        // 如果路径在白名单中，不需要添加 Token
+        if let path = urlRequest.url?.path,
+           noAuthPaths.contains(where: { path.contains($0) }) {
             completion(.success(urlRequest))
             return
         }
@@ -50,8 +57,15 @@ class AuthInterceptor: RequestInterceptor {
             return
         }
 
-        // 如果是 /auth/register 接口返回 401，说明有其他问题，不重试
-        if request.request?.url?.path.contains("/auth/register") == true {
+        // 不需要鉴权的接口白名单
+        let noAuthPaths = [
+            "/auth/register",
+            "/info/channels"
+        ]
+        
+        // 如果是不需要鉴权的接口返回 401，说明有其他问题，不重试
+        if let path = request.request?.url?.path,
+           noAuthPaths.contains(where: { path.contains($0) }) {
             completion(.doNotRetryWithError(error))
             return
         }

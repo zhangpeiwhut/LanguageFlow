@@ -12,7 +12,7 @@ import Alamofire
 final class AuthManager {
     static let shared = AuthManager()
 
-    private let baseURL = "https://elegantfish.online"
+    private let baseURL = "https://elegantfish.online/podcast"
     private let cacheInterval: TimeInterval = 300
 
     private var deviceUUID: String
