@@ -17,3 +17,7 @@
 # !voa_rss_scraper.py
 # !voa_processor.py
 # !voa_uploader.py
+
+# Server (认证和内购功能已整合到server目录)
+/server/__pycache__
+/server/**/__pycache__

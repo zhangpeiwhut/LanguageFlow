@@ -1,6 +1,9 @@
+# Web框架
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 httpx>=0.25.0
-feedparser>=6.0.10
-cos-python-sdk-v5>=1.9.25
 
+# 认证和内购相关
+pydantic>=2.5.0
+cryptography>=41.0.0
+PyJWT>=2.8.0

@@ -1,15 +1,21 @@
-"""Podcast Service - FastAPI服务"""
 import os
-from fastapi import FastAPI, HTTPException, Query, APIRouter, Body
+import sqlite3
+from fastapi import FastAPI, HTTPException, Query, APIRouter, Body, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Annotated
 from .database import PodcastDatabase
 from .cos_service import COSService
+from .models.auth_models import AuthDatabase
+from .api.auth_api import register_or_login_handler
+from .api.payment_api import verify_purchase_handler, get_devices_handler, unbind_device_handler
+from .schemas.auth import RegisterRequest
+from .schemas.payment import VerifyPurchaseRequest
+from .dependencies.auth import get_current_device_uuid
 
 app = FastAPI(
-    title='Podcast Service',
-    description='Podcast数据存储和查询服务',
+    title='LanguageFlow Service',
+    description='LanguageFlow Service',
     version='1.0.0',
 )
 
@@ -21,12 +27,21 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-# 路由都以 /podcast 为前缀
-router = APIRouter(prefix="/podcast", tags=["podcast"])
+podcast_router = APIRouter(prefix="/podcast", tags=["podcast"])
+auth_router = APIRouter(prefix="/auth", tags=["authentication"])
+payment_router = APIRouter(prefix="/payment", tags=["payment"])
+user_router = APIRouter(prefix="/user", tags=["user"])
 
 # 初始化数据库
 db_path = os.getenv("DB_PATH", "podcasts.db")
-db = PodcastDatabase(db_path=db_path)
+podcast_db = PodcastDatabase(db_path=db_path)
+auth_db = AuthDatabase(db_path=db_path)
+
+# 获取数据库连接的辅助函数
+def get_db_connection():
+    """获取数据库连接"""
+    conn = sqlite3.connect(db_path)
+    return conn
 
 # 初始化COS服务（用于生成预签名URL）
 try:
@@ -47,18 +62,19 @@ def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
     missing_fields = [f for f in required_fields if f not in podcast]
     if missing_fields:
         raise ValueError(f'缺少必需字段: {missing_fields}')
-    podcast_id = db.insert_podcast(podcast)
+    podcast_id = podcast_db.insert_podcast(podcast)
     return podcast_id, True
 
 
-@router.get('/query')
+@podcast_router.get('/query')
 async def get_podcasts(
+    _: Annotated[str, Depends(get_current_device_uuid)],  # 仅用于 token 验证
     company: str = Query(..., description='公司名称'),
     channel: str = Query(..., description='频道名称'),
     timestamp: int = Query(..., description='时间戳')
 ):
     try:
-        podcasts = db.get_podcasts_by_timestamp(company, channel, timestamp)
+        podcasts = podcast_db.get_podcasts_by_timestamp(company, channel, timestamp)
         return JSONResponse({
             'success': True,
             'count': len(podcasts),
@@ -71,15 +87,17 @@ async def get_podcasts(
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
-@router.get('/channels')
-async def get_all_channels():
+@podcast_router.get('/channels')
+async def get_all_channels(
+    _: Annotated[str, Depends(get_current_device_uuid)]
+):
     """
     获取所有的podcast频道列表
     Returns:
         包含所有频道（company + channel）的JSON响应
     """
     try:
-        channels = db.get_all_channels()
+        channels = podcast_db.get_all_channels()
         return JSONResponse({
             'success': True,
             'count': len(channels),
@@ -90,13 +108,17 @@ async def get_all_channels():
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
-@router.get('/channels/{company}/{channel}/dates')
-async def get_channel_dates(company: str, channel: str):
+@podcast_router.get('/channels/{company}/{channel}/dates')
+async def get_channel_dates(
+    _: Annotated[str, Depends(get_current_device_uuid)],
+    company: str,
+    channel: str,
+):
     """
     获取某个频道的所有日期时间戳列表
     """
     try:
-        timestamps = db.get_channel_dates(company, channel)
+        timestamps = podcast_db.get_channel_dates(company, channel)
         return JSONResponse({
             'success': True,
             'company': company,
@@ -109,14 +131,15 @@ async def get_channel_dates(company: str, channel: str):
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
-@router.get('/channels/{company}/{channel}/podcasts')
+@podcast_router.get('/channels/{company}/{channel}/podcasts')
 async def get_channel_podcasts(
+    _: Annotated[str, Depends(get_current_device_uuid)],
     company: str,
     channel: str,
-    timestamp: int = Query(..., description='时间戳')
+    timestamp: int = Query(..., description='时间戳'),
 ):
     try:
-        podcasts = db.get_channel_podcasts_by_timestamp(company, channel, timestamp)
+        podcasts = podcast_db.get_channel_podcasts_by_timestamp(company, channel, timestamp)
         return JSONResponse({
             'success': True,
             'company': company,
@@ -132,16 +155,19 @@ async def get_channel_podcasts(
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
-@router.get('/check/{podcast_id}')
-async def check_podcast_complete(podcast_id: str):
+@podcast_router.get('/check/{podcast_id}')
+async def check_podcast_complete(
+    _: Annotated[str, Depends(get_current_device_uuid)],
+    podcast_id: str
+):
     """
     检查podcast是否完整
     """
     try:
-        is_complete = db.is_podcast_complete(podcast_id)
+        is_complete = podcast_db.is_podcast_complete(podcast_id)
         return JSONResponse({
             'success': True,
-            'exists': db.podcast_exists(podcast_id),
+            'exists': podcast_db.podcast_exists(podcast_id),
             'is_complete': is_complete
         })
     except Exception as error:
@@ -149,17 +175,18 @@ async def check_podcast_complete(podcast_id: str):
         raise HTTPException(status_code=500, detail=f'检查失败: {str(error)}')
 
 
-@router.get('/detail/{podcast_id}')
+@podcast_router.get('/detail/{podcast_id}')
 async def get_podcast_detail_by_id(
+    _: Annotated[str, Depends(get_current_device_uuid)],
     podcast_id: str,
-    expires: int = Query(180, description='URL有效期（秒），默认180秒（3分钟）', ge=60, le=3600)
+    expires: int = Query(180, description='URL有效期（秒），默认180秒（3分钟）', ge=60, le=3600),
 ):
     """
     根据ID获取podcast详情
     会自动生成临时URL（预签名URL）并返回
     """
     try:
-        podcast = db.get_podcast_by_id(podcast_id)
+        podcast = podcast_db.get_podcast_by_id(podcast_id)
         
         if not podcast:
             raise HTTPException(status_code=404, detail='Podcast not found')
@@ -212,7 +239,7 @@ async def get_podcast_detail_by_id(
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
-@router.post('/upload')
+@podcast_router.post('/upload')
 async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
     """
     上传完整的podcast数据
@@ -250,7 +277,7 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
         raise HTTPException(status_code=500, detail=f'上传失败: {str(error)}')
 
 
-@router.post('/upload/batch')
+@podcast_router.post('/upload/batch')
 async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
     """
     批量上传podcasts（包含segmentsKey和segmentCount）
@@ -303,9 +330,80 @@ async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
         print(f'[podcast-service] 批量上传失败: {error}')
         raise HTTPException(status_code=500, detail=f'批量上传失败: {str(error)}')
 
+@auth_router.post('/register')
+async def register_or_login(request: RegisterRequest):
+    """注册或登录"""
+    try:
+        result = register_or_login_handler(request, auth_db)
+        return JSONResponse(result)
+    except Exception as error:
+        print(f'[server] 注册失败: {error}')
+        raise HTTPException(status_code=500, detail=f'注册失败: {str(error)}')
 
-# 注册路由
-app.include_router(router)
+
+@payment_router.post('/verify')
+async def verify_purchase(
+    request: VerifyPurchaseRequest,
+    device_uuid: Annotated[str, Depends(get_current_device_uuid)]
+):
+    """验证购买凭证"""
+    try:
+        with get_db_connection() as conn:
+            result = verify_purchase_handler(request, device_uuid, auth_db, conn)
+            return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[server] 验证购买失败: {error}')
+        raise HTTPException(status_code=500, detail=f'验证失败: {str(error)}')
+
+
+@user_router.get('/devices')
+async def get_devices(
+    device_uuid: Annotated[str, Depends(get_current_device_uuid)]
+):
+    """获取绑定的设备列表"""
+    try:
+        with get_db_connection() as conn:
+            result = get_devices_handler(device_uuid, auth_db, conn)
+            return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[server] 获取设备列表失败: {error}')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
+
+
+@user_router.delete('/devices/{target_device_uuid}')
+async def unbind_device(
+    target_device_uuid: str,
+    device_uuid: Annotated[str, Depends(get_current_device_uuid)]
+):
+    """解绑设备"""
+    try:
+        with get_db_connection() as conn:
+            result = unbind_device_handler(device_uuid, target_device_uuid, auth_db, conn)
+            return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[server] 解绑设备失败: {error}')
+        raise HTTPException(status_code=500, detail=f'解绑失败: {str(error)}')
+
+
+app.include_router(podcast_router)
+app.include_router(auth_router)
+app.include_router(payment_router)
+app.include_router(user_router)
+
+# 根路径
+@app.get("/")
+async def root():
+    return {
+        "message": "LanguageFlow Service",
+        "version": "1.0.0",
+        "features": ["podcasts", "authentication", "in-app-purchase"]
+    }
 
 # 启动服务
 if __name__ == '__main__':
