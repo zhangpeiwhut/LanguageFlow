@@ -49,7 +49,7 @@ class PodcastAPI {
         .podcasts
     }
 
-    func getChannelPodcastsPaged(company: String, channel: String, page: Int, limit: Int = 20) async throws -> ChannelPodcastsPagedResponse {
+    func getChannelPodcastsPaged(company: String, channel: String, page: Int, limit: Int = 10) async throws -> ChannelPodcastsPagedResponse {
         return try await NetworkManager.shared.request(
             "\(baseURL)/info/channels/\(company)/\(channel)/podcasts/paged",
             method: .get,

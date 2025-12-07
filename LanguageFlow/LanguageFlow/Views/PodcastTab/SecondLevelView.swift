@@ -11,9 +11,9 @@ struct SecondLevelView: View {
     @State private var currentPage: Int = 1
     @State private var totalPages: Int = 1
     @State private var totalCount: Int = 0
-    private let pageLimit: Int = 20
+    @State private var pageCache: [Int: [PodcastSummary]] = [:]
+    private let pageLimit: Int = 10
     @State private var isInitialLoading = false
-    @State private var isPageLoading = false
     @State private var errorMessage: String?
     @State private var areTranslationsHidden = true
 
@@ -39,27 +39,31 @@ struct SecondLevelView: View {
                 }
                 .padding()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 14) {
-                        ForEach(podcasts) { podcast in
-                            NavigationLink {
-                                PodcastLearningView(podcastId: podcast.id)
-                            } label: {
-                                PodcastCardView(
-                                    podcast: podcast,
-                                    showTranslation: !areTranslationsHidden,
-                                    durationText: formatDurationMinutes(podcast.duration),
-                                    segmentText: formatSegmentCount(podcast.segmentCount)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        pageControls
+                VStack(spacing: 10) {
+                    if totalPages > 1 {
+                        pageSelector
+                            .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
+                    ScrollView {
+                        LazyVStack(spacing: 14) {
+                            ForEach(podcasts) { podcast in
+                                NavigationLink {
+                                    PodcastLearningView(podcastId: podcast.id)
+                                } label: {
+                                    PodcastCardView(
+                                        podcast: podcast,
+                                        showTranslation: !areTranslationsHidden,
+                                        durationText: formatDurationMinutes(podcast.duration),
+                                        segmentText: formatSegmentCount(podcast.segmentCount)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
                 }
+                .padding(.bottom, 32)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
@@ -88,15 +92,22 @@ struct SecondLevelView: View {
 private extension SecondLevelView {
     func loadFirstPageIfNeeded() async {
         guard podcasts.isEmpty else { return }
+        pageCache.removeAll()
         await loadPage(page: 1)
     }
 
     func loadPage(page: Int) async {
         let targetPage = max(1, page)
+        if let cached = pageCache[targetPage] {
+            podcasts = cached
+            currentPage = targetPage
+            errorMessage = nil
+            isInitialLoading = false
+            return
+        }
         if targetPage == 1 && podcasts.isEmpty {
             isInitialLoading = true
         }
-        isPageLoading = true
         errorMessage = nil
 
         do {
@@ -107,24 +118,17 @@ private extension SecondLevelView {
                 limit: pageLimit
             )
             let newItems = response.podcasts
-            await MainActor.run {
-                podcasts = newItems
-                currentPage = targetPage
-                totalCount = response.total
-                let computedPages = Int(ceil(Double(response.total) / Double(response.limit)))
-                totalPages = max(1, response.totalPages ?? computedPages)
-                errorMessage = nil
-            }
+            podcasts = newItems
+            currentPage = targetPage
+            totalCount = response.total
+            let computedPages = Int(ceil(Double(response.total) / Double(response.limit)))
+            totalPages = max(1, response.totalPages ?? computedPages)
+            errorMessage = nil
+            pageCache[targetPage] = newItems
         } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
+            errorMessage = error.localizedDescription
         }
-
-        await MainActor.run {
-            isInitialLoading = false
-            isPageLoading = false
-        }
+        isInitialLoading = false
     }
 
     func formatDurationMinutes(_ duration: Int?) -> String {
@@ -138,37 +142,40 @@ private extension SecondLevelView {
         return "\(count)句"
     }
 
-    @ViewBuilder
-    var pageControls: some View {
-        if totalPages > 1 || isPageLoading {
-            HStack(spacing: 12) {
-                Button {
-                    Task { await loadPage(page: max(1, currentPage - 1)) }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.bold())
+    var pageSelector: some View {
+        let pages = Array(1...max(totalPages, 1))
+        return VStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(pages, id: \.self) { page in
+                        Button {
+                            guard page != currentPage else { return }
+                            Task { await loadPage(page: page) }
+                        } label: {
+                            Text("\(page)")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(currentPage == page ? .accentColor : .primary)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 12)
+                                .background(
+                                    Capsule().fill(
+                                        currentPage == page
+                                        ? Color.accentColor.opacity(0.14)
+                                        : Color(uiColor: .secondarySystemGroupedBackground)
+                                    )
+                                )
+                                .overlay(
+                                    Capsule().stroke(
+                                        currentPage == page ? Color.accentColor : Color.gray.opacity(0.25),
+                                        lineWidth: 1
+                                    )
+                                )
+                        }
+                    }
                 }
-                .disabled(currentPage <= 1 || isPageLoading)
-
-                Text("第 \(currentPage) 页 / 共 \(totalPages) 页")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    Task { await loadPage(page: min(totalPages, currentPage + 1)) }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.body.bold())
-                }
-                .disabled(currentPage >= totalPages || isPageLoading)
-
-                if isPageLoading {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
         }
     }
 }

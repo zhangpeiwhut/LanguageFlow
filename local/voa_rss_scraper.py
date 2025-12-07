@@ -12,8 +12,9 @@ import re
 
 # VOA Learning English频道列表
 # 排除还在更新的"VOA Learning English Podcast"和视频频道
-# 排除实事新闻频道 "As It Is"
-# 视频频道: Everyday Grammar Video, English @ the Movies, English in a Minute, News Words, How to Pronounce, Talk2Us
+# 排除实事新闻频道 "As It Is", "What's Trending Today?"
+# 排除视频频道: Everyday Grammar Video, English @ the Movies, English in a Minute, News Words, How to Pronounce, Talk2Us
+# 排除长音频频道: What It Takes
 VOA_CHANNELS = [
     "Arts & Culture",
     "American Stories",
@@ -27,9 +28,6 @@ VOA_CHANNELS = [
     "America's National Parks",
     "Early Literacy",
     "Education",
-    "What's Trending Today?",
-    "What It Takes",
-    "English on the Job",
     "U.S. History",
 ]
 
@@ -49,8 +47,7 @@ CHANNEL_ZONEID_MAP = {
     "Early Literacy": "7467",
     "Education": "959",
     "What's Trending Today?": "1689",
-    "What It Takes": "4652",
-    "English on the Job": "5254",
+    "What It Takes": "5254",
     "U.S. History": "979",
 }
 

@@ -20,7 +20,7 @@ struct FirstLevelView: View {
                     LazyVGrid(columns: [
                         GridItem(.flexible(), spacing: 16),
                         GridItem(.flexible(), spacing: 16)
-                    ], spacing: 20) {
+                    ], spacing: 16) {
                         ForEach(filteredChannels) { channel in
                             NavigationLink(destination: SecondLevelView(channel: channel)) {
                                 ChannelCardView(channel: channel)
@@ -29,7 +29,7 @@ struct FirstLevelView: View {
                         }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                    .padding(.bottom, 16)
                 }
                 .background(Color(uiColor: .systemGroupedBackground))
             }
@@ -64,6 +64,8 @@ struct FirstLevelView: View {
 // MARK: - Channel Card View
 struct ChannelCardView: View {
     let channel: Channel
+    private let imageAspectRatio: CGFloat = 900.0 / 672.0
+    private let labelHeight: CGFloat = 42
 
     var body: some View {
         ZStack {
@@ -80,12 +82,12 @@ struct ChannelCardView: View {
                     if let image = channel.image {
                         image
                             .resizable()
-                            .scaledToFill()
+                            .aspectRatio(imageAspectRatio, contentMode: .fit)
                     } else {
                         Color.gray.opacity(0.2)
+                            .aspectRatio(imageAspectRatio, contentMode: .fit)
                     }
                 }
-                .frame(height: 130)
                 .frame(maxWidth: .infinity)
                 .clipped()
 
@@ -100,13 +102,12 @@ struct ChannelCardView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, minHeight: labelHeight, maxHeight: labelHeight)
             }
             .clipShape(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
             )
         }
-        .frame(height: 180)
     }
 }
 
@@ -121,14 +122,11 @@ private extension Channel {
         case earlyLiteracy = "Early Literacy"
         case education = "Education"
         case educationTips = "Education Tips"
-        case englishOnTheJob = "English on the Job"
         case everydayGrammar = "Everyday Grammar"
         case healthLifestyle = "Health & Lifestyle"
         case scienceTechnology = "Science & Technology"
         case usHistory = "U.S. History"
-        case whatItTakes = "What It Takes"
         case wordsAndTheirStories = "Words and Their Stories"
-        case whatsTrendingToday = "What's Trending Today?"
 
         var chineseName: String {
             switch self {
@@ -148,8 +146,6 @@ private extension Channel {
                 return "教育"
             case .educationTips:
                 return "教育小贴士"
-            case .englishOnTheJob:
-                return "职场英语"
             case .everydayGrammar:
                 return "日常语法"
             case .healthLifestyle:
@@ -158,12 +154,8 @@ private extension Channel {
                 return "科学与技术"
             case .usHistory:
                 return "美国历史"
-            case .whatItTakes:
-                return "成功之道"
             case .wordsAndTheirStories:
                 return "词汇与故事"
-            case .whatsTrendingToday:
-                return "今日热点"
             }
         }
         
@@ -185,8 +177,6 @@ private extension Channel {
                 return "education"
             case .educationTips:
                 return "education_tips"
-            case .englishOnTheJob:
-                return "english_on_the_job"
             case .everydayGrammar:
                 return "everyday_grammar"
             case .healthLifestyle:
@@ -195,12 +185,8 @@ private extension Channel {
                 return "science_technology"
             case .usHistory:
                 return "us_history"
-            case .whatItTakes:
-                return "what_it_takes"
             case .wordsAndTheirStories:
                 return "words_and_their_stories"
-            case .whatsTrendingToday:
-                return "whats_trending_today"
             }
         }
     }
