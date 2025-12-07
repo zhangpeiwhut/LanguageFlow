@@ -377,6 +377,10 @@ class VoaProcessor:
             podcasts = [p for p in podcasts if p['id'] not in self.state['processed']]
             print(f'[voa-processor] 过滤已处理后剩余 {len(podcasts)} 个 podcasts')
 
+        # 按 duration 排序（从小到大），duration 为 None 的放最后
+        podcasts.sort(key=lambda p: p.get('duration') if p.get('duration') else float('inf'))
+        print(f'[voa-processor] 已按音频时长排序（从短到长）')
+
         # 限制数量
         if limit:
             podcasts = podcasts[:limit]

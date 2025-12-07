@@ -81,9 +81,12 @@ struct PodcastLearningView: View {
                             }
                         }
                         .safeAreaInset(edge: .bottom) {
+                            let displayTitle = (store.podcast.title ?? "Podcast").removingTrailingDateSuffix()
+                            let displayTranslation = (store.podcast.titleTranslation ?? "").removingTrailingDateSuffix()
+
                             GlobalPlaybackBar(
-                                title: store.podcast.title ?? "Podcast",
-                                titleTranslation: store.podcast.titleTranslation ?? "",
+                                title: displayTitle,
+                                titleTranslation: displayTranslation,
                                 isPlaying: store.isGlobalPlaying,
                                 playbackRate: store.globalPlaybackRate,
                                 progressBinding: Binding(
@@ -96,14 +99,12 @@ struct PodcastLearningView: View {
                                 currentTime: store.currentTime,
                                 duration: store.totalDuration,
                                 onTogglePlay: store.toggleGlobalPlayback,
+                                onPrevious: store.playPreviousSegment,
+                                onNext: store.playNextSegment,
                                 onChangeRate: store.changeGlobalPlaybackRate,
                                 onSeekEditingChanged: store.handleSeekEditingChanged,
                                 isFavorited: store.isGlobalFavorited,
-                                onToggleFavorite: store.toggleGlobalFavorite,
-                                isLooping: store.isLooping,
-                                areTranslationsHidden: store.areTranslationsHidden,
-                                onToggleLoopMode: store.toggleLoopMode,
-                                onToggleTranslations: store.toggleTranslationVisibility
+                                onToggleFavorite: store.toggleGlobalFavorite
                             )
                             .padding(.horizontal)
                             .padding(.vertical, 8)
@@ -120,6 +121,18 @@ struct PodcastLearningView: View {
             loadPodcast()
         }
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if let store {
+                    Button {
+                        store.toggleTranslationVisibility()
+                    } label: {
+                        Image(systemName: store.areTranslationsHidden ? "lightbulb.slash" : "lightbulb")
+                            .font(.system(size: 14))
+                    }
+                }
+            }
+        }
         .sheet(item: $lookupWord) { item in
             DictionaryLookupView(word: item.word)
                 .presentationDetents([.medium])
@@ -133,7 +146,7 @@ struct PodcastLearningView: View {
 
     @ViewBuilder
     private func podcastTitleSection(for store: PodcastLearningStore) -> some View {
-        if let title = store.podcast.title, !title.isEmpty {
+        if let title = store.podcast.title?.removingTrailingDateSuffix(), !title.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.title3.weight(.semibold))
@@ -142,7 +155,7 @@ struct PodcastLearningView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 
-                if let translation = store.podcast.titleTranslation, !translation.isEmpty {
+                if let translation = store.podcast.titleTranslation?.removingTrailingDateSuffix(), !translation.isEmpty {
                     Text(translation)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -209,7 +222,6 @@ final class PodcastLearningStore {
     var currentSegmentID: Podcast.Segment.ID?
     var segmentStates: [Podcast.Segment.ID: SegmentPracticeState] = [:]
     var currentTime: Double = 0
-    var isLooping = false
     var areTranslationsHidden = false
 
     @ObservationIgnored private var modelContext: ModelContext
@@ -222,6 +234,7 @@ final class PodcastLearningStore {
     @ObservationIgnored private var isScrubbing = false
     @ObservationIgnored private var isAudioSessionActive = false
     @ObservationIgnored private let localAudioURL: URL
+    @ObservationIgnored private var isSeeking = false
 
     init(podcast: Podcast, segments: [Podcast.Segment], localAudioURL: URL, modelContext: ModelContext) {
         self.podcast = podcast
@@ -236,7 +249,6 @@ final class PodcastLearningStore {
             let segmentId = "\(podcast.id)-\(segment.id)"
             let isSegmentFavorited = favoritedSegmentIDs.contains(segmentId)
             segmentStates[segment.id] = SegmentPracticeState(
-                playbackRate: segment.status?.customPlaybackRate ?? 1.0,
                 isFavorited: isSegmentFavorited,
                 lastScore: segment.status?.bestScore
             )
@@ -253,6 +265,7 @@ final class PodcastLearningStore {
     }
     
     func toggleGlobalPlayback() {
+        clearSegmentLoops()
         if isGlobalPlaying {
             pauseAudio()
             isGlobalPlaying = false
@@ -277,11 +290,28 @@ final class PodcastLearningStore {
         if isGlobalPlaying {
             audioPlayer?.rate = Float(rate)
         }
-        for segment in segments {
-            var state = segmentStates[segment.id] ?? SegmentPracticeState()
-            state.playbackRate = rate
-            segmentStates[segment.id] = state
+    }
+
+    func playPreviousSegment() {
+        guard !segments.isEmpty else { return }
+        let targetIndex: Int
+        if let currentIndex = currentSegmentIndex {
+            targetIndex = max(currentIndex - 1, 0)
+        } else {
+            targetIndex = 0
         }
+        playSegment(at: targetIndex)
+    }
+
+    func playNextSegment() {
+        guard !segments.isEmpty else { return }
+        let targetIndex: Int
+        if let currentIndex = currentSegmentIndex {
+            targetIndex = min(currentIndex + 1, segments.count - 1)
+        } else {
+            targetIndex = segments.count - 1
+        }
+        playSegment(at: targetIndex)
     }
     
     func toggleGlobalFavorite() {
@@ -301,10 +331,6 @@ final class PodcastLearningStore {
         }
     }
 
-    func toggleLoopMode() {
-        isLooping.toggle()
-    }
-    
     func toggleTranslationVisibility() {
         withAnimation(.easeInOut(duration: 0.2)) {
             areTranslationsHidden.toggle()
@@ -331,12 +357,13 @@ final class PodcastLearningStore {
     }
 
     func togglePlay(for segment: Podcast.Segment) {
+        clearSegmentLoops()
         let isCurrentlyPlayingSegment = !isGlobalMode
             && isGlobalPlaying
             && currentSegmentID == segment.id
 
         if isCurrentlyPlayingSegment {
-            playSegment(segment, useGlobalRate: false)
+            playSegment(segment)
             return
         }
 
@@ -344,7 +371,7 @@ final class PodcastLearningStore {
         isGlobalPlaying = true
         currentSegmentID = segment.id
         setPlayingSegment(segment.id)
-        playSegment(segment, useGlobalRate: false)
+        playSegment(segment)
     }
 
     func toggleFavorite(for segment: Podcast.Segment) {
@@ -372,12 +399,6 @@ final class PodcastLearningStore {
                 self.segmentStates[segment.id] = state
             }
         }
-    }
-
-    func updatePlaybackRate(_ rate: Double, for segment: Podcast.Segment) {
-        var state = currentState(for: segment)
-        state.playbackRate = rate
-        segmentStates[segment.id] = state
     }
 
     func updateAttempt(_ text: String, for segment: Podcast.Segment) {
@@ -427,8 +448,8 @@ final class PodcastLearningStore {
                 self.currentSegmentID = finalSegment.id
             }
             if self.isGlobalPlaying {
-                player.rate = Float(self.globalPlaybackRate)
                 player.play()
+                player.rate = Float(self.globalPlaybackRate)
             }
         }
     }
@@ -452,6 +473,24 @@ final class PodcastLearningStore {
 
     private func currentState(for segment: Podcast.Segment) -> SegmentPracticeState {
         segmentStates[segment.id] ?? SegmentPracticeState()
+    }
+
+    func toggleSegmentLoop(for segment: Podcast.Segment) {
+        var state = currentState(for: segment)
+        if state.isLooping {
+            state.isLooping = false
+            segmentStates[segment.id] = state
+            return
+        }
+
+        clearSegmentLoops()
+        state.isLooping = true
+        segmentStates[segment.id] = state
+        currentSegmentID = segment.id
+        isGlobalMode = false
+        isGlobalPlaying = true
+        setPlayingSegment(segment.id)
+        playSegment(segment)
     }
 
     private func beginScrubbing() {
@@ -523,15 +562,25 @@ final class PodcastLearningStore {
               let segment = segments.first(where: { $0.id == currentID }) else {
             return
         }
-        playSegment(segment, useGlobalRate: true)
+        playSegment(segment)
+    }
+
+    private func playSegment(at index: Int) {
+        guard segments.indices.contains(index) else { return }
+        let segment = segments[index]
+        clearSegmentLoops()
+        isGlobalMode = true
+        isGlobalPlaying = true
+        setPlayingSegment(nil)
+        playSegment(segment)
     }
     
-    private func playSegment(_ segment: Podcast.Segment, useGlobalRate: Bool = false) {
+    private func playSegment(_ segment: Podcast.Segment) {
         activateAudioSessionIfNeeded()
         guard let player = audioPlayer else {
             setupAudioPlayer()
             guard audioPlayer != nil else { return }
-            return playSegment(segment, useGlobalRate: useGlobalRate)
+            return playSegment(segment)
         }
         
         if let observer = timeObserver {
@@ -541,16 +590,19 @@ final class PodcastLearningStore {
         playbackFinishedObserver?.cancel()
         
         let startTime = CMTime(seconds: segment.start, preferredTimescale: 600)
+        isSeeking = true
         
-        let playbackRate = useGlobalRate ? globalPlaybackRate : (segmentStates[segment.id]?.playbackRate ?? 1.0)
-        player.rate = Float(playbackRate)
-        
-        player.seek(to: startTime) { [weak self] finished in
+        player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             guard finished, let self = self else { return }
             player.play()
+            player.rate = Float(self.globalPlaybackRate)
             self.currentTime = startTime.seconds
+            self.currentSegmentID = segment.id
+            self.setPlayingSegment(segment.id)
+            self.isSeeking = false
             self.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { [weak self] time in
                 guard let self = self else { return }
+                guard !self.isSeeking else { return }
                 let currentSeconds = time.seconds
                 self.currentTime = currentSeconds
                 if self.isGlobalMode {
@@ -572,7 +624,12 @@ final class PodcastLearningStore {
                             player.removeTimeObserver(observer)
                             self.timeObserver = nil
                         }
-                        self.audioDidFinishPlaying()
+                        // If looping this segment, restart it; otherwise finish.
+                        if self.segmentStates[segment.id]?.isLooping == true {
+                            self.playSegment(segment)
+                        } else {
+                            self.audioDidFinishPlaying()
+                        }
                     }
                 }
             }
@@ -616,18 +673,22 @@ final class PodcastLearningStore {
             let index = segments.firstIndex(where: { $0.id == currentID })
         else {
             currentSegmentID = segments.first?.id
-            if isGlobalMode && isGlobalPlaying {
-                playCurrentSegment()
+            return
+        }
+
+        let nextIndex = min(index + 1, segments.count - 1)
+        guard nextIndex != index else {
+            if let player = audioPlayer {
+                stopGlobalPlayback(using: player)
+            } else {
+                isGlobalPlaying = false
+                isGlobalMode = false
             }
             return
         }
 
-        let nextIndex = (index + 1) % segments.count
         currentSegmentID = segments[nextIndex].id
-        
-        if isGlobalMode && isGlobalPlaying {
-            playCurrentSegment()
-        }
+        playCurrentSegment()
     }
     
     private func setPlayingSegment(_ segmentID: Podcast.Segment.ID?) {
@@ -639,25 +700,7 @@ final class PodcastLearningStore {
     }
     
     private func handleGlobalPlaybackCompletion(using player: AVPlayer) {
-        if isLooping {
-            restartGlobalPlayback(using: player)
-        } else {
-            stopGlobalPlayback(using: player)
-        }
-    }
-    
-    private func restartGlobalPlayback(using player: AVPlayer) {
-        guard let firstSegment = segments.first else { return }
-        let startTime = CMTime(seconds: firstSegment.start, preferredTimescale: 600)
-        player.seek(to: startTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self = self else { return }
-            self.currentSegmentID = firstSegment.id
-            self.currentTime = firstSegment.start
-            self.isGlobalPlaying = true
-            self.isGlobalMode = true
-            player.rate = Float(self.globalPlaybackRate)
-            player.play()
-        }
+        stopGlobalPlayback(using: player)
     }
     
     private func stopGlobalPlayback(using player: AVPlayer) {
@@ -680,5 +723,13 @@ final class PodcastLearningStore {
             }
         }
         return segments.last(where: { $0.start <= time }) ?? segments.first
+    }
+
+    private func clearSegmentLoops() {
+        for key in segmentStates.keys {
+            var state = segmentStates[key] ?? SegmentPracticeState()
+            state.isLooping = false
+            segmentStates[key] = state
+        }
     }
 }

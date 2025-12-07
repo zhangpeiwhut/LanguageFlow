@@ -7,20 +7,21 @@ import SwiftUI
 
 struct SecondLevelView: View {
     let channel: Channel
-    @State private var timestamps: [Int] = []
-    @State private var selectedTimestamp: Int?
     @State private var podcasts: [PodcastSummary] = []
-    @State private var cachedPodcasts: [Int: [PodcastSummary]] = [:]
-    @State private var isLoadingDates = false
-    @State private var isLoadingPodcasts = false
+    @State private var currentPage: Int = 1
+    @State private var totalPages: Int = 1
+    @State private var totalCount: Int = 0
+    private let pageLimit: Int = 20
+    @State private var isInitialLoading = false
+    @State private var isPageLoading = false
     @State private var errorMessage: String?
     @State private var areTranslationsHidden = true
 
     var body: some View {
         Group {
-            if isLoadingDates {
+            if isInitialLoading {
                 ProgressView()
-            } else if let error = errorMessage, timestamps.isEmpty {
+            } else if let error = errorMessage, podcasts.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
@@ -32,44 +33,34 @@ struct SecondLevelView: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                     Button("重试") {
-                        loadDates()
+                        Task { await loadFirstPageIfNeeded() }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
             } else {
-                VStack(spacing: 0) {
-                    dateSelector
-                    Divider()
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            if isLoadingPodcasts {
-                                ProgressView()
-                            } else {
-                                LazyVStack(spacing: 14) {
-                                    ForEach(podcasts) { podcast in
-                                        NavigationLink {
-                                            PodcastLearningView(podcastId: podcast.id)
-                                        } label: {
-                                            PodcastCardView(
-                                                podcast: podcast,
-                                                showTranslation: !areTranslationsHidden,
-                                                durationText: formatDurationMinutes(podcast.duration),
-                                                segmentText: formatSegmentCount(podcast.segmentCount)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .animation(.easeInOut(duration: 0.3), value: areTranslationsHidden)
+                ScrollView {
+                    LazyVStack(spacing: 14) {
+                        ForEach(podcasts) { podcast in
+                            NavigationLink {
+                                PodcastLearningView(podcastId: podcast.id)
+                            } label: {
+                                PodcastCardView(
+                                    podcast: podcast,
+                                    showTranslation: !areTranslationsHidden,
+                                    durationText: formatDurationMinutes(podcast.duration),
+                                    segmentText: formatSegmentCount(podcast.segmentCount)
+                                )
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 32)
+                        pageControls
                     }
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 32)
                 }
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle(channel.channel)
@@ -85,103 +76,55 @@ struct SecondLevelView: View {
                     Image(systemName: areTranslationsHidden ? "lightbulb.slash" : "lightbulb")
                         .font(.system(size: 14))
                 }
+                .buttonStyle(.plain)
             }
         }
         .task {
-            loadDates()
+            await loadFirstPageIfNeeded()
         }
-        .onChange(of: selectedTimestamp) { _, newValue in
-            guard let newValue else { return }
-            loadPodcasts(for: newValue)
-        }
-    }
-
-    private var dateSelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(timestamps, id: \.self) { timestamp in
-                    let label = formatDateLabel(timestamp)
-                    Button {
-                        selectedTimestamp = timestamp
-                    } label: {
-                        Text(label)
-                            .font(.footnote)
-                            .fontWeight(.semibold)
-                            .foregroundColor(selectedTimestamp == timestamp ? .accentColor : .primary)
-                            .padding(.vertical, 5)
-                            .padding(.horizontal, 10)
-                            .frame(minWidth: 60)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(selectedTimestamp == timestamp ? Color.accentColor.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(selectedTimestamp == timestamp ? Color.accentColor : Color.gray.opacity(0.25), lineWidth: 1)
-                        )
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
 
 private extension SecondLevelView {
-    func loadDates() {
-        guard timestamps.isEmpty else { return }
-        Task { @MainActor in
-            isLoadingDates = true
-            errorMessage = nil
-            do {
-                timestamps = try await PodcastAPI.shared.getChannelDates(
-                    company: channel.company,
-                    channel: channel.channel
-                )
-                timestamps = Array(timestamps.prefix(30))
-                if let firstTimestamp = timestamps.first {
-                    selectedTimestamp = firstTimestamp
-                }
-            } catch {
+    func loadFirstPageIfNeeded() async {
+        guard podcasts.isEmpty else { return }
+        await loadPage(page: 1)
+    }
+
+    func loadPage(page: Int) async {
+        let targetPage = max(1, page)
+        if targetPage == 1 && podcasts.isEmpty {
+            isInitialLoading = true
+        }
+        isPageLoading = true
+        errorMessage = nil
+
+        do {
+            let response = try await PodcastAPI.shared.getChannelPodcastsPaged(
+                company: channel.company,
+                channel: channel.channel,
+                page: targetPage,
+                limit: pageLimit
+            )
+            let newItems = response.podcasts
+            await MainActor.run {
+                podcasts = newItems
+                currentPage = targetPage
+                totalCount = response.total
+                let computedPages = Int(ceil(Double(response.total) / Double(response.limit)))
+                totalPages = max(1, response.totalPages ?? computedPages)
+                errorMessage = nil
+            }
+        } catch {
+            await MainActor.run {
                 errorMessage = error.localizedDescription
-                print("加载日期失败: \(error)")
             }
-            isLoadingDates = false
-        }
-    }
-
-    func loadPodcasts(for timestamp: Int) {
-        if let cached = cachedPodcasts[timestamp] {
-            podcasts = cached
-            return
         }
 
-        Task { @MainActor in
-            isLoadingPodcasts = true
-            do {
-                podcasts = try await PodcastAPI.shared.getChannelPodcasts(
-                    company: channel.company,
-                    channel: channel.channel,
-                    timestamp: timestamp
-                )
-                cachedPodcasts[timestamp] = podcasts
-            } catch {
-                print("加载podcasts失败: \(error)")
-                podcasts = []
-            }
-
-            isLoadingPodcasts = false
+        await MainActor.run {
+            isInitialLoading = false
+            isPageLoading = false
         }
-    }
-
-    func formatDateLabel(_ timestamp: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: date)
     }
 
     func formatDurationMinutes(_ duration: Int?) -> String {
@@ -194,6 +137,40 @@ private extension SecondLevelView {
         guard let count else { return "0句" }
         return "\(count)句"
     }
+
+    @ViewBuilder
+    var pageControls: some View {
+        if totalPages > 1 || isPageLoading {
+            HStack(spacing: 12) {
+                Button {
+                    Task { await loadPage(page: max(1, currentPage - 1)) }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.bold())
+                }
+                .disabled(currentPage <= 1 || isPageLoading)
+
+                Text("第 \(currentPage) 页 / 共 \(totalPages) 页")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    Task { await loadPage(page: min(totalPages, currentPage + 1)) }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.body.bold())
+                }
+                .disabled(currentPage >= totalPages || isPageLoading)
+
+                if isPageLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+        }
+    }
 }
 
 // MARK: - Podcast Card
@@ -204,12 +181,14 @@ struct PodcastCardView: View {
     let segmentText: String
 
     private var originalTitle: String {
-        stripTrailingPeriod(podcast.title ?? podcast.titleTranslation ?? "无标题")
+        let base = (podcast.title ?? podcast.titleTranslation ?? "无标题").removingTrailingDateSuffix()
+        return stripTrailingPeriod(base)
     }
 
     private var translatedTitle: String? {
         guard let translation = podcast.titleTranslation, !translation.isEmpty else { return nil }
-        return stripTrailingPeriod(translation)
+        let cleaned = translation.removingTrailingDateSuffix()
+        return stripTrailingPeriod(cleaned)
     }
 
     private func stripTrailingPeriod(_ text: String) -> String {

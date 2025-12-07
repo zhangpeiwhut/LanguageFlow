@@ -9,21 +9,15 @@ struct GlobalPlaybackBar: View {
     let currentTime: Double
     let duration: Double
     let onTogglePlay: () -> Void
+    let onPrevious: () -> Void
+    let onNext: () -> Void
     let onChangeRate: (Double) -> Void
     let onSeekEditingChanged: (Bool) -> Void
     let isFavorited: Bool
     let onToggleFavorite: () -> Void
-    let isLooping: Bool
-    let areTranslationsHidden: Bool
-    let onToggleLoopMode: () -> Void
-    let onToggleTranslations: () -> Void
 
-    private let rateOptions: [Double] = [0.75, 1.0, 1.25]
-    
-    private var progress: Double {
-        progressBinding.wrappedValue
-    }
-    
+    private let rateOptions: [Double] = [0.75, 1.0, 1.5, 2.0]
+
     private func formatTime(_ seconds: Double) -> String {
         let minutes = Int(seconds) / 60
         let secs = Int(seconds) % 60
@@ -50,13 +44,13 @@ struct GlobalPlaybackBar: View {
             }
             
             HStack {
-                loopButton
+                favoriteButton
                 Spacer()
-                translationButton
+                previousButton
                 Spacer()
                 playButton
                 Spacer()
-                favoriteButton
+                nextButton
                 Spacer()
                 rateButton
             }
@@ -76,31 +70,32 @@ struct GlobalPlaybackBar: View {
         .buttonStyle(.plain)
     }
     
+    
+    private var previousButton: some View {
+        Button(action: onPrevious) {
+            Image(systemName: "backward.end.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var nextButton: some View {
+        Button(action: onNext) {
+            Image(systemName: "forward.end.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+    }
+    
     private var favoriteButton: some View {
         Button(action: onToggleFavorite) {
             Image(systemName: isFavorited ? "heart.fill" : "heart")
                 .font(.system(size: 24))
                 .foregroundStyle(isFavorited ? .red : .primary)
-                .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private var loopButton: some View {
-        Button(action: onToggleLoopMode) {
-            Image(systemName: isLooping ? "point.forward.to.point.capsulepath.fill" : "point.forward.to.point.capsulepath")
-                .font(.system(size: 24))
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private var translationButton: some View {
-        Button(action: onToggleTranslations) {
-            Image(systemName: areTranslationsHidden ? "lightbulb.slash" : "lightbulb")
-                .font(.system(size: 24))
-                .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)

@@ -2,8 +2,6 @@
 //  PodcastAPI.swift
 //  LanguageFlow
 //
-//  API服务类，用于调用后端podcast接口
-//
 
 import Foundation
 import Alamofire
@@ -51,6 +49,17 @@ class PodcastAPI {
         .podcasts
     }
 
+    func getChannelPodcastsPaged(company: String, channel: String, page: Int, limit: Int = 20) async throws -> ChannelPodcastsPagedResponse {
+        return try await NetworkManager.shared.request(
+            "\(baseURL)/info/channels/\(company)/\(channel)/podcasts/paged",
+            method: .get,
+            parameters: ["page": page, "limit": limit]
+        )
+        .validate()
+        .serializingDecodable(ChannelPodcastsPagedResponse.self)
+        .value
+    }
+
     func getPodcastDetailById(_ id: String) async throws -> Podcast {
         return try await NetworkManager.shared.request(
             "\(baseURL)/info/detail/\(id)",
@@ -91,6 +100,23 @@ struct ChannelPodcastsResponse: Codable {
     let timestamp: Int
     let count: Int
     let podcasts: [PodcastSummary]
+}
+
+nonisolated
+struct ChannelPodcastsPagedResponse: Codable {
+    let company: String
+    let channel: String
+    let page: Int
+    let limit: Int
+    let count: Int
+    let total: Int
+    let totalPages: Int?
+    let podcasts: [PodcastSummary]
+
+    enum CodingKeys: String, CodingKey {
+        case company, channel, page, limit, count, total, podcasts
+        case totalPages = "total_pages"
+    }
 }
 
 nonisolated

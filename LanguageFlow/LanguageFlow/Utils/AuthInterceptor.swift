@@ -9,10 +9,7 @@ import Foundation
 import Alamofire
 
 final class AuthInterceptor: RequestInterceptor {
-    private var isRefreshing = false
-    private var requestsToRetry: [(RetryResult) -> Void] = []
-
-    // MARK: - RequestAdapter
+    private let refreshState = TokenRefreshState()
 
     func adapt(
         _ urlRequest: URLRequest,
@@ -70,50 +67,59 @@ final class AuthInterceptor: RequestInterceptor {
             return
         }
 
-        // 将请求加入等待队列
-        requestsToRetry.append(completion)
-
-        // 如果已经在刷新 Token，等待即可
-        guard !isRefreshing else { return }
-
-        // 开始刷新 Token
-        refreshToken { [weak self] success in
-            guard let self = self else { return }
-
-            self.isRefreshing = false
-
-            if success {
-                // 刷新成功，重试所有等待的请求
-                self.requestsToRetry.forEach { $0(.retry) }
-            } else {
-                // 刷新失败，所有请求都失败
-                let error = NSError(
-                    domain: "AuthInterceptor",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to refresh token"]
-                )
-                self.requestsToRetry.forEach { $0(.doNotRetryWithError(error)) }
+        // 使用 actor 保护的状态管理
+        Task {
+            let shouldStartRefresh = await refreshState.addRequestToRetry(completion)
+            
+            if shouldStartRefresh {
+                await refreshToken()
             }
-
-            self.requestsToRetry.removeAll()
         }
     }
 
     // MARK: - Private Methods
 
-    private func refreshToken(completion: @escaping (Bool) -> Void) {
-        isRefreshing = true
-
-        Task {
-            do {
-                // 强制刷新用户状态，会获取新的 Token
-                try await AuthManager.shared.syncUserStatus(force: true)
-                print("[Info] Token refreshed successfully")
-                completion(true)
-            } catch {
-                print("[Error] Failed to refresh token: \(error)")
-                completion(false)
-            }
+    private func refreshToken() async {
+        do {
+            // 强制刷新用户状态，会获取新的 Token
+            try await AuthManager.shared.syncUserStatus(force: true)
+            print("[Info] Token refreshed successfully")
+            
+            // 通知所有等待的请求重试
+            let requests = await refreshState.completeRefresh(success: true)
+            requests.forEach { $0(.retry) }
+        } catch {
+            print("[Error] Failed to refresh token: \(error)")
+            
+            // 通知所有等待的请求失败
+            let requests = await refreshState.completeRefresh(success: false)
+            let error = NSError(
+                domain: "AuthInterceptor",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to refresh token"]
+            )
+            requests.forEach { $0(.doNotRetryWithError(error)) }
         }
+    }
+}
+
+actor TokenRefreshState {
+    private var isRefreshing = false
+    private var requestsToRetry: [(RetryResult) -> Void] = []
+
+    func addRequestToRetry(_ completion: @escaping (RetryResult) -> Void) -> Bool {
+        requestsToRetry.append(completion)
+        let shouldStartRefresh = !isRefreshing
+        if shouldStartRefresh {
+            isRefreshing = true
+        }
+        return shouldStartRefresh
+    }
+
+    func completeRefresh(success: Bool) -> [(RetryResult) -> Void] {
+        isRefreshing = false
+        let requests = requestsToRetry
+        requestsToRetry.removeAll()
+        return requests
     }
 }

@@ -21,7 +21,7 @@ struct SegmentListView: View {
                     areTranslationsHidden: store.areTranslationsHidden,
                     onPlay: { store.togglePlay(for: segment) },
                     onFavorite: { store.toggleFavorite(for: segment) },
-                    onRateChange: { rate in store.updatePlaybackRate(rate, for: segment) },
+                    onToggleLoop: { store.toggleSegmentLoop(for: segment) },
                     onAttemptChange: { text in store.updateAttempt(text, for: segment) },
                     onToggleTranslation: { store.toggleTranslation(for: segment) },
                     onLookup: onLookup
@@ -42,7 +42,7 @@ private struct SegmentPracticeCard: View {
     let areTranslationsHidden: Bool
     let onPlay: () -> Void
     let onFavorite: () -> Void
-    let onRateChange: (Double) -> Void
+    let onToggleLoop: () -> Void
     let onAttemptChange: (String) -> Void
     let onToggleTranslation: () -> Void
     let onLookup: (String) -> Void
@@ -75,11 +75,10 @@ private struct SegmentPracticeCard: View {
             }
             
             SegmentPracticeControls(
-                isPlaying: state.isPlaying,
                 isFavorited: state.isFavorited,
-                playbackRate: state.playbackRate,
-                onFavorite: onFavorite,
-                onRateChange: onRateChange
+                isLooping: state.isLooping,
+                onToggleLoop: onToggleLoop,
+                onFavorite: onFavorite
             )
         }
         .padding(12)
@@ -113,33 +112,19 @@ private struct SegmentPracticeCard: View {
 }
 
 private struct SegmentPracticeControls: View {
-    let isPlaying: Bool
     let isFavorited: Bool
-    let playbackRate: Double
+    let isLooping: Bool
+    let onToggleLoop: () -> Void
     let onFavorite: () -> Void
-    let onRateChange: (Double) -> Void
     
-    private let rateOptions: [Double] = [0.75, 1.0, 1.25]
-
-    private func nextRate() -> Double {
-        guard let currentIndex = rateOptions.firstIndex(of: playbackRate) else {
-            return rateOptions[0]
-        }
-        let nextIndex = (currentIndex + 1) % rateOptions.count
-        return rateOptions[nextIndex]
-    }
-
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             Spacer()
-            
-            Button {
-                onRateChange(nextRate())
-            } label: {
-                Text("\(playbackRate, specifier: "%.2fx")")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+
+            Button(action: onToggleLoop) {
+                Image(systemName: "arrow.trianglehead.clockwise.rotate.90")
+                    .font(.body)
+                    .foregroundColor(isLooping ? .accentColor : .secondary)
             }
             .buttonStyle(.plain)
 
@@ -171,31 +156,6 @@ private struct PlaybackRateSlider: View {
                     onChange(newValue)
                 }
             ), in: 0.5...2, step: 0.05)
-        }
-    }
-}
-
-private struct ScoreBadge: View {
-    let score: Int
-
-    var body: some View {
-        Text("\(score) 分")
-            .font(.caption2)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(scoreColor.opacity(0.15))
-            .foregroundColor(scoreColor)
-            .clipShape(Capsule())
-    }
-
-    private var scoreColor: Color {
-        switch score {
-        case 85...:
-            return .green
-        case 60..<85:
-            return .orange
-        default:
-            return .red
         }
     }
 }

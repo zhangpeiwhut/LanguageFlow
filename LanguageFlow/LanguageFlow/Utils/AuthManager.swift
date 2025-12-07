@@ -13,7 +13,7 @@ final class AuthManager {
     static let shared = AuthManager()
 
     private let baseURL = "https://elegantfish.online/podcast"
-    private let cacheInterval: TimeInterval = 300
+    private let cacheInterval: TimeInterval = 60 * 60
 
     private var deviceUUID: String
     private var accessToken: String?

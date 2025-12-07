@@ -152,6 +152,42 @@ async def get_channel_podcasts(
         print(f'[podcast-service] 获取频道podcasts失败: {error}')
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
+@podcast_router.get('/channels/{company}/{channel}/podcasts/paged')
+async def get_channel_podcasts_paginated(
+    _: Annotated[str, Depends(get_current_device_uuid)],
+    company: str,
+    channel: str,
+    page: int = Query(1, ge=1, description='页码，从1开始'),
+    limit: int = Query(20, ge=1, le=200, description='每页数量，默认20')
+):
+    """
+    获取某个频道的podcasts列表（分页）
+    说明：
+    - 按 timestamp DESC，再按 id DESC 保证稳定顺序
+    - 日期数据不变动时可用 page+limit
+    """
+    try:
+        data = podcast_db.get_channel_podcasts_paginated(company, channel, page, limit)
+        total = data['total']
+        podcasts = data['podcasts']
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        return JSONResponse({
+            'success': True,
+            'company': company,
+            'channel': channel,
+            'page': page,
+            'limit': limit,
+            'count': len(podcasts),
+            'total': total,
+            'total_pages': total_pages,
+            'podcasts': podcasts
+        })
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(f'[podcast-service] 获取频道podcasts（分页）失败: {error}')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
+
 
 @podcast_router.get('/check/{podcast_id}')
 async def check_podcast_complete(
@@ -408,4 +444,3 @@ if __name__ == '__main__':
     import uvicorn
     port = int(os.getenv('PORT', '8001'))
     uvicorn.run(app, host='0.0.0.0', port=port)
-

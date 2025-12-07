@@ -241,3 +241,51 @@ class PodcastDatabase:
         
         return results
 
+    def get_channel_podcasts_paginated(
+        self,
+        company: str,
+        channel: str,
+        page: int,
+        limit: int
+    ) -> Dict[str, Any]:
+        """
+        按频道分页获取podcast摘要，按时间倒序+id倒序保证稳定顺序
+        """
+        offset = (page - 1) * limit
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COUNT(*) AS total
+            FROM podcasts
+            WHERE company = ? AND channel = ?
+        """, (company, channel))
+        total = cursor.fetchone()["total"]
+
+        cursor.execute("""
+            SELECT id, title, titleTranslation, duration, segmentCount, timestamp
+            FROM podcasts
+            WHERE company = ? AND channel = ?
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ? OFFSET ?
+        """, (company, channel, limit, offset))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        podcasts = []
+        for row in rows:
+            podcasts.append({
+                'id': row['id'],
+                'title': row['title'],
+                'titleTranslation': row['titleTranslation'],
+                'duration': row['duration'],
+                'segmentCount': row['segmentCount'],
+                'timestamp': row['timestamp'],
+            })
+
+        return {
+            'total': total,
+            'podcasts': podcasts,
+        }

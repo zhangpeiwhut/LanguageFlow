@@ -10,69 +10,69 @@ import SwiftData
 
 // MARK: - 整篇收藏
 struct FavoritePodcastsView: View {
+    @Binding var navigationPath: NavigationPath
+    var embeddedInScrollView: Bool = true
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoritePodcast.createdAt, order: .reverse) private var favoritePodcastsData: [FavoritePodcast]
     @State private var favoritePodcasts: [FavoritePodcast] = []
-    @State private var navigationPath = NavigationPath()
     
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            Group {
-                if favoritePodcasts.isEmpty {
-                    emptyState(
-                        systemImage: "text.book.closed",
-                        title: "暂无书签",
-                        message: "收藏整篇后会显示在这里"
-                    )
-                } else {
+        Group {
+            if favoritePodcasts.isEmpty {
+                emptyState(
+                    systemImage: "text.book.closed",
+                    title: "空空如也"
+                )
+            } else {
+                if embeddedInScrollView {
                     ScrollView {
-                        LazyVStack(spacing: 14) {
-                            ForEach(favoritePodcasts, id: \.id) { podcast in
-                                FavoritePodcastCard(
-                                    title: podcast.title ?? "未命名节目",
-                                    titleTranslation: podcast.titleTranslation,
-                                    durationText: durationText(for: podcast),
-                                    segmentText: segmentText(for: podcast),
-                                    onOpen: {
-                                        navigationPath.append(podcast.id)
-                                    },
-                                    onUnfavorite: {
-                                        Task {
-                                            do {
-                                                try await FavoriteManager.shared.unfavoritePodcast(podcast.id, context: modelContext)
-                                                await MainActor.run { syncFavorites() }
-                                            } catch {
-                                                print("取消收藏失败: \(error)")
-                                            }
-                                        }
-                                    }
-                                )
-                                .padding(.horizontal, 16)
-                            }
-                        }
-                        .padding(.top, 8)
-                        .padding(.bottom, 32)
+                        contentList
                     }
                     .background(Color(uiColor: .systemGroupedBackground))
+                } else {
+                    contentList
                 }
             }
-            .navigationTitle("书签")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear(perform: syncFavorites)
-            .onChange(of: favoritePodcastsData.count) { _, _ in syncFavorites() }
-            .navigationDestination(for: String.self) { podcastId in
-                PodcastLearningView(podcastId: podcastId)
-            }
         }
+        .onAppear(perform: syncFavorites)
+        .onChange(of: favoritePodcastsData.count) { _, _ in syncFavorites() }
     }
 }
 
 private extension FavoritePodcastsView {
+    var contentList: some View {
+        LazyVStack(spacing: 14) {
+            ForEach(favoritePodcasts, id: \.id) { podcast in
+                FavoritePodcastCard(
+                    title: (podcast.title ?? "未命名节目").removingTrailingDateSuffix(),
+                    titleTranslation: podcast.titleTranslation?.removingTrailingDateSuffix(),
+                    durationText: durationText(for: podcast),
+                    segmentText: segmentText(for: podcast),
+                    onOpen: {
+                        navigationPath.append(podcast.id)
+                    },
+                    onUnfavorite: {
+                        Task {
+                            do {
+                                try await FavoriteManager.shared.unfavoritePodcast(podcast.id, context: modelContext)
+                                await MainActor.run { syncFavorites() }
+                            } catch {
+                                print("取消收藏失败: \(error)")
+                            }
+                        }
+                    }
+                )
+                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.bottom, 32)
+    }
+
     func syncFavorites() {
         favoritePodcasts = favoritePodcastsData
     }
 
-    func emptyState(systemImage: String, title: String, message: String) -> some View {
+    func emptyState(systemImage: String, title: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: systemImage)
                 .font(.largeTitle)
@@ -80,10 +80,8 @@ private extension FavoritePodcastsView {
             Text(title)
                 .font(.headline)
                 .foregroundColor(.secondary)
-            Text(message)
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
+        .padding(.bottom, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -125,7 +123,7 @@ private struct FavoritePodcastCard: View {
                     .foregroundColor(.secondary)
                 Spacer()
                 Button(action: onUnfavorite) {
-                    Image(systemName: "heart.slash.fill")
+                    Image(systemName: "heart.fill")
                         .font(.caption)
                         .foregroundColor(.pink)
                 }

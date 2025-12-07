@@ -25,8 +25,8 @@ struct SubscriptionView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             }
-            .navigationTitle("LanguageFlow Pro")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("订阅")
+            .navigationBarTitleDisplayMode(.large)
             .task {
                 await iapManager.refresh()
             }

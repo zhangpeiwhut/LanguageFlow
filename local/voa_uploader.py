@@ -87,22 +87,25 @@ class VoaUploader:
             print(f'[voa-uploader] 本地文件不存在，跳过: {podcast_id}')
             return None
 
-        # 1. 上传音频到 COS
+        # 1. 上传音频到 COS（异步执行同步方法）
         audio_key = None
         try:
             print(f'[voa-uploader] 上传音频文件到 COS...')
-            audio_key = self.cos_service.upload_audio_from_file(
-                file_path=str(audio_path),
-                podcast_id=podcast_id,
-                channel=podcast.get('channel'),
-                timestamp=podcast.get('timestamp')
+            loop = asyncio.get_event_loop()
+            audio_key = await loop.run_in_executor(
+                None,
+                self.cos_service.upload_audio_from_file,
+                str(audio_path),
+                podcast_id,
+                podcast.get('channel'),
+                podcast.get('timestamp')
             )
             print(f'[voa-uploader] 音频上传成功: {audio_key}')
         except Exception as e:
             print(f'[voa-uploader] 音频上传到 COS 失败: {e}')
             return None
 
-        # 2. 上传 segments 到 COS
+        # 2. 上传 segments 到 COS（异步执行同步方法）
         segments_key = None
         try:
             print(f'[voa-uploader] 上传 segments 到 COS...')
@@ -110,11 +113,15 @@ class VoaUploader:
             with open(segments_path, 'r', encoding='utf-8') as f:
                 segments = json.load(f)
 
-            segments_key = self.cos_service.upload_segments_json(
-                podcast_id,
-                segments,
-                channel=podcast.get('channel'),
-                timestamp=podcast.get('timestamp')
+            loop = asyncio.get_event_loop()
+            segments_key = await loop.run_in_executor(
+                None,
+                lambda: self.cos_service.upload_segments_json(
+                    podcast_id,
+                    segments,
+                    podcast.get('channel'),
+                    podcast.get('timestamp')
+                )
             )
             print(f'[voa-uploader] segments 上传成功: {segments_key}')
         except Exception as e:
@@ -215,20 +222,22 @@ class VoaUploader:
         self,
         limit: Optional[int] = None,
         channel_filter: Optional[str] = None,
-        skip_uploaded: bool = True
+        skip_uploaded: bool = True,
+        max_concurrent: int = 5
     ) -> Dict[str, int]:
         """
-        批量上传 podcasts
+        批量上传 podcasts（支持并发）
 
         Args:
             limit: 限制上传数量
             channel_filter: 频道过滤
             skip_uploaded: 是否跳过已上传的
+            max_concurrent: 最大并发数，默认 5
 
         Returns:
             {'success': ..., 'failed': ..., 'skipped': ...}
         """
-        print(f'[voa-uploader] 开始批量上传...')
+        print(f'[voa-uploader] 开始批量上传（并发数: {max_concurrent}）...')
 
         # 加载元数据
         metadata = self._load_metadata()
@@ -245,34 +254,58 @@ class VoaUploader:
             podcasts = [p for p in podcasts if p['channel'] == channel_filter]
             print(f'[voa-uploader] 频道过滤后剩余 {len(podcasts)} 个')
 
+        # 过滤已上传
+        if skip_uploaded:
+            podcasts = [p for p in podcasts if p['id'] not in self.upload_state['uploaded_to_server']]
+            print(f'[voa-uploader] 过滤已上传后剩余 {len(podcasts)} 个')
+
         # 限制数量
         if limit:
             podcasts = podcasts[:limit]
             print(f'[voa-uploader] 限制上传数量: {limit} 个')
 
+        if not podcasts:
+            print(f'[voa-uploader] 没有需要上传的 podcasts')
+            return {'success': 0, 'failed': 0, 'skipped': 0}
+
+        # 使用 Semaphore 控制并发
+        semaphore = asyncio.Semaphore(max_concurrent)
         success_count = 0
         failed_count = 0
-        skipped_count = 0
+        total = len(podcasts)
+        completed = 0
 
-        for i, podcast in enumerate(podcasts, 1):
-            print(f'\n[voa-uploader] 进度: {i}/{len(podcasts)}')
+        async def upload_with_semaphore(podcast: Dict[str, Any], index: int):
+            nonlocal completed, success_count, failed_count
+            async with semaphore:
+                try:
+                    print(f'\n[voa-uploader] [{index + 1}/{total}] 开始上传: {podcast["title"][:50]}')
+                    success = await self.upload_single_podcast(podcast)
 
-            # 跳过已上传
-            if skip_uploaded and podcast['id'] in self.upload_state['uploaded_to_server']:
-                print(f'[voa-uploader] 跳过已上传: {podcast["id"]}')
-                skipped_count += 1
-                continue
+                    completed += 1
 
-            # 上传
-            success = await self.upload_single_podcast(podcast)
-            if success:
-                success_count += 1
-            else:
-                failed_count += 1
+                    if success:
+                        success_count += 1
+                        print(f'[voa-uploader] [{index + 1}/{total}] ✓ 成功 (总进度: {completed}/{total})')
+                    else:
+                        failed_count += 1
+                        print(f'[voa-uploader] [{index + 1}/{total}] ✗ 失败 (总进度: {completed}/{total})')
 
-            # 每上传 10 个保存一次状态
-            if i % 10 == 0:
-                self._save_upload_state()
+                    # 每完成 10 个保存一次状态
+                    if completed % 10 == 0:
+                        self._save_upload_state()
+
+                    return success
+                except Exception as e:
+                    completed += 1
+                    failed_count += 1
+                    print(f'[voa-uploader] [{index + 1}/{total}] ✗ 异常: {e} (总进度: {completed}/{total})')
+                    return False
+
+        # 并行上传
+        print(f'\n[voa-uploader] 开始并行上传 {total} 个 podcasts...')
+        tasks = [upload_with_semaphore(podcast, i) for i, podcast in enumerate(podcasts)]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         # 最后保存一次
         self._save_upload_state()
@@ -280,12 +313,11 @@ class VoaUploader:
         print(f'\n[voa-uploader] 批量上传完成：')
         print(f'  - 成功: {success_count} 个')
         print(f'  - 失败: {failed_count} 个')
-        print(f'  - 跳过: {skipped_count} 个')
 
         return {
             'success': success_count,
             'failed': failed_count,
-            'skipped': skipped_count
+            'skipped': 0
         }
 
     def get_upload_statistics(self) -> Dict[str, Any]:
@@ -313,6 +345,7 @@ async def main():
     parser.add_argument('--server-url', type=str, help='服务器 URL')
     parser.add_argument('--limit', type=int, help='限制上传数量')
     parser.add_argument('--channel', type=str, help='只上传指定频道')
+    parser.add_argument('--concurrent', type=int, default=5, help='并发数量（默认 5）')
     parser.add_argument('--stats', action='store_true', help='显示上传统计信息')
 
     args = parser.parse_args()
@@ -332,11 +365,13 @@ async def main():
 
     print('=== VOA Learning English 批量上传 ===')
     print(f'服务器: {server_url}')
+    print(f'并发数: {args.concurrent}')
 
     result = await uploader.upload_batch(
         limit=args.limit,
         channel_filter=args.channel,
-        skip_uploaded=True
+        skip_uploaded=True,
+        max_concurrent=args.concurrent
     )
 
     print('\n=== 上传完成 ===')
