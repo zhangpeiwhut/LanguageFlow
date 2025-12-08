@@ -11,27 +11,14 @@ import SwiftData
 // MARK: - 整篇收藏
 struct FavoritePodcastsView: View {
     @Binding var navigationPath: NavigationPath
-    var embeddedInScrollView: Bool = true
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoritePodcast.createdAt, order: .reverse) private var favoritePodcastsData: [FavoritePodcast]
     @State private var favoritePodcasts: [FavoritePodcast] = []
-    
+
     var body: some View {
         Group {
-            if favoritePodcasts.isEmpty {
-                emptyState(
-                    systemImage: "text.book.closed",
-                    title: "空空如也"
-                )
-            } else {
-                if embeddedInScrollView {
-                    ScrollView {
-                        contentList
-                    }
-                    .background(Color(uiColor: .systemGroupedBackground))
-                } else {
-                    contentList
-                }
+            if !favoritePodcasts.isEmpty {
+                contentList
             }
         }
         .onAppear(perform: syncFavorites)
@@ -70,19 +57,6 @@ private extension FavoritePodcastsView {
 
     func syncFavorites() {
         favoritePodcasts = favoritePodcastsData
-    }
-
-    func emptyState(systemImage: String, title: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.secondary)
-        }
-        .padding(.bottom, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     func durationText(for podcast: FavoritePodcast) -> String {

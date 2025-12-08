@@ -11,7 +11,6 @@ import Combine
 
 // MARK: - 单句收藏
 struct FavoriteSegmentsView: View {
-    var embeddedInScrollView: Bool = true
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoriteSegment.createdAt, order: .reverse) private var favoriteSegmentsData: [FavoriteSegment]
     @State private var favoriteSegments: [FavoritePodcastSegment] = []
@@ -22,21 +21,8 @@ struct FavoriteSegmentsView: View {
     
     var body: some View {
         Group {
-            if favoriteSegments.isEmpty {
-                emptyState(
-                    systemImage: "text.quote",
-                    title: "暂无单句收藏",
-                    message: "添加喜欢的句子到收藏"
-                )
-            } else {
-                if embeddedInScrollView {
-                    ScrollView {
-                        segmentList
-                    }
-                    .background(Color(uiColor: .systemGroupedBackground))
-                } else {
-                    segmentList
-                }
+            if !favoriteSegments.isEmpty {
+                segmentList
             }
         }
         .onAppear(perform: syncFavorites)
@@ -109,21 +95,6 @@ private extension FavoriteSegmentsView {
         .padding(.bottom, 32)
     }
 
-    func emptyState(systemImage: String, title: String, message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text(message)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
     func syncFavorites() {
         favoriteSegments = favoriteSegmentsData.map { $0.toFavoritePodcastSegment() }
         let ids = Set(favoriteSegments.map(\.id))

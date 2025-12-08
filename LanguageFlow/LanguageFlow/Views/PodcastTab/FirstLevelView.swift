@@ -12,15 +12,18 @@ struct FirstLevelView: View {
     }
     @State private var errorMessage: String?
     @State private var searchText = ""
-    
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var gridColumns: [GridItem] {
+        let columnCount = horizontalSizeClass == .regular ? 3 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 16), count: columnCount)
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 ScrollView {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 16),
-                        GridItem(.flexible(), spacing: 16)
-                    ], spacing: 16) {
+                    LazyVGrid(columns: gridColumns, spacing: 16) {
                         ForEach(filteredChannels) { channel in
                             NavigationLink(destination: SecondLevelView(channel: channel)) {
                                 ChannelCardView(channel: channel)

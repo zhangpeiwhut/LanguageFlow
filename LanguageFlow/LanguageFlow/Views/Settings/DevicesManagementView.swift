@@ -16,26 +16,17 @@ struct DevicesManagementView: View {
     private let baseURL = "https://elegantfish.online/podcast"
 
     var body: some View {
-        List {
+        Group {
             if isLoading {
-                Section {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                        Spacer()
-                    }
-                }
+                LoadingView()
             } else if let error = errorMessage {
-                Section {
-                    Text(error)
-                        .foregroundColor(.red)
+                ErrorView {
+                    Task { await loadDevices() }
                 }
             } else if devices.isEmpty {
-                Section {
-                    Text("暂无绑定设备")
-                        .foregroundColor(.secondary)
-                }
+                EmptyStateView()
             } else {
+                List {
                 Section {
                     ForEach(devices) { device in
                         DeviceRow(device: device) {
@@ -49,6 +40,7 @@ struct DevicesManagementView: View {
                     Text("最多允许 2 台设备同时使用会员。第 3 台设备恢复购买时，最老的设备会被自动解绑。")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
                 }
             }
         }

@@ -42,24 +42,11 @@ struct PodcastLearningView: View {
         ZStack(alignment: .topLeading) {
             Group {
                 if isLoading {
-                    ProgressView()
+                    LoadingView()
                 } else if let error = errorMessage {
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                            .foregroundColor(.orange)
-                        Text("加载失败")
-                            .font(.headline)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button("重试") {
-                            loadPodcast()
-                        }
-                        .buttonStyle(.borderedProminent)
+                    ErrorView {
+                        loadPodcast()
                     }
-                    .padding()
                 } else if let store = store {
                     ScrollViewReader { proxy in
                         ScrollView {

@@ -13,54 +13,54 @@ struct SecondLevelView: View {
     @State private var totalCount: Int = 0
     @State private var pageCache: [Int: [PodcastSummary]] = [:]
     private let pageLimit: Int = 10
-    @State private var isInitialLoading = false
+    @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var isPageLoading = false
+    @State private var pageLoadError: String?
     @State private var areTranslationsHidden = true
 
     var body: some View {
         Group {
-            if isInitialLoading {
-                ProgressView()
-            } else if let error = errorMessage, podcasts.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text("加载失败")
-                        .font(.headline)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("重试") {
-                        Task { await loadFirstPageIfNeeded() }
-                    }
-                    .buttonStyle(.borderedProminent)
+            if isLoading {
+                LoadingView()
+            } else if errorMessage != nil {
+                ErrorView {
+                    Task { await loadPage(page: currentPage) }
                 }
-                .padding()
             } else {
                 VStack(spacing: 10) {
                     if totalPages > 1 {
                         pageSelector
                             .padding(.horizontal, 16)
                     }
-                    ScrollView {
-                        LazyVStack(spacing: 14) {
-                            ForEach(podcasts) { podcast in
-                                NavigationLink {
-                                    PodcastLearningView(podcastId: podcast.id)
-                                } label: {
-                                    PodcastCardView(
-                                        podcast: podcast,
-                                        showTranslation: !areTranslationsHidden,
-                                        durationText: formatDurationMinutes(podcast.duration),
-                                        segmentText: formatSegmentCount(podcast.segmentCount)
-                                    )
+
+                    Group {
+                        if isPageLoading {
+                            LoadingView()
+                        } else if pageLoadError != nil  {
+                            ErrorView {
+                                Task { await loadPage(page: currentPage) }
+                            }
+                        } else {
+                            ScrollView {
+                                LazyVStack(spacing: 14) {
+                                    ForEach(podcasts) { podcast in
+                                        NavigationLink {
+                                            PodcastLearningView(podcastId: podcast.id)
+                                        } label: {
+                                            PodcastCardView(
+                                                podcast: podcast,
+                                                showTranslation: !areTranslationsHidden,
+                                                durationText: formatDurationMinutes(podcast.duration),
+                                                segmentText: formatSegmentCount(podcast.segmentCount)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 16)
                             }
                         }
-                        .padding(.horizontal, 16)
                     }
                 }
                 .padding(.bottom, 32)
@@ -98,17 +98,30 @@ private extension SecondLevelView {
 
     func loadPage(page: Int) async {
         let targetPage = max(1, page)
+
+        let isFirstLoad = targetPage == 1 && podcasts.isEmpty
+
         if let cached = pageCache[targetPage] {
+            if !isFirstLoad {
+                currentPage = targetPage
+            }
             podcasts = cached
             currentPage = targetPage
             errorMessage = nil
-            isInitialLoading = false
+            pageLoadError = nil
+            isLoading = false
+            isPageLoading = false
             return
         }
-        if targetPage == 1 && podcasts.isEmpty {
-            isInitialLoading = true
+
+        if isFirstLoad {
+            isLoading = true
+            errorMessage = nil
+        } else {
+            currentPage = targetPage
+            isPageLoading = true
+            pageLoadError = nil
         }
-        errorMessage = nil
 
         do {
             let response = try await PodcastAPI.shared.getChannelPodcastsPaged(
@@ -117,18 +130,44 @@ private extension SecondLevelView {
                 page: targetPage,
                 limit: pageLimit
             )
+
+            // 检查是否还在当前页面，防止竞态条件
+            guard currentPage == targetPage else {
+                // 用户已经切换到其他页面了，只缓存数据，不更新UI
+                pageCache[targetPage] = response.podcasts
+                return
+            }
+
             let newItems = response.podcasts
             podcasts = newItems
-            currentPage = targetPage
             totalCount = response.total
             let computedPages = Int(ceil(Double(response.total) / Double(response.limit)))
             totalPages = max(1, response.totalPages ?? computedPages)
-            errorMessage = nil
             pageCache[targetPage] = newItems
+
+            if isFirstLoad {
+                errorMessage = nil
+            } else {
+                pageLoadError = nil
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            // 同样检查是否还在当前页面
+            guard currentPage == targetPage else {
+                return
+            }
+
+            if isFirstLoad {
+                errorMessage = error.localizedDescription
+            } else {
+                pageLoadError = error.localizedDescription
+            }
         }
-        isInitialLoading = false
+
+        if isFirstLoad {
+            isLoading = false
+        } else {
+            isPageLoading = false
+        }
     }
 
     func formatDurationMinutes(_ duration: Int?) -> String {
@@ -144,38 +183,28 @@ private extension SecondLevelView {
 
     var pageSelector: some View {
         let pages = Array(1...max(totalPages, 1))
-        return VStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(pages, id: \.self) { page in
-                        Button {
-                            guard page != currentPage else { return }
-                            Task { await loadPage(page: page) }
-                        } label: {
-                            Text("\(page)")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundColor(currentPage == page ? .accentColor : .primary)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 12)
-                                .background(
-                                    Capsule().fill(
-                                        currentPage == page
-                                        ? Color.accentColor.opacity(0.14)
-                                        : Color(uiColor: .secondarySystemGroupedBackground)
-                                    )
-                                )
-                                .overlay(
-                                    Capsule().stroke(
-                                        currentPage == page ? Color.accentColor : Color.gray.opacity(0.25),
-                                        lineWidth: 1
-                                    )
-                                )
-                        }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(pages, id: \.self) { page in
+                    Button {
+                        guard page != currentPage else { return }
+                        Task { await loadPage(page: page) }
+                    } label: {
+                        Text("\(page)")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(currentPage == page ? .white : .primary)
+                            .frame(minWidth: 36, minHeight: 36)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(currentPage == page ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground))
+                            )
+                            .shadow(color: currentPage == page ? Color.accentColor.opacity(0.3) : .clear, radius: 4, x: 0, y: 2)
                     }
+                    .disabled(page == currentPage)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
             }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 8)
         }
     }
 }

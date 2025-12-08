@@ -26,28 +26,33 @@ struct FavoritesView: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            ScrollView {
-                LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
-                    Section {
-                        Group {
-                            switch selectedTab {
-                            case .podcasts:
-                                FavoritePodcastsView(navigationPath: $navigationPath, embeddedInScrollView: false)
-                            case .segments:
-                                FavoriteSegmentsView(embeddedInScrollView: false)
+            GeometryReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
+                        Section {
+                            ZStack {
+                                EmptyStateView().frame(height: max(proxy.size.height - 100, 200))
+                                Group {
+                                    switch selectedTab {
+                                    case .podcasts:
+                                        FavoritePodcastsView(navigationPath: $navigationPath)
+                                    case .segments:
+                                        FavoriteSegmentsView()
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .top)
                             }
+                        } header: {
+                            pickerHeader
                         }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    } header: {
-                        pickerHeader
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .navigationTitle("收藏")
-            .navigationBarTitleDisplayMode(.large)
-            .navigationDestination(for: String.self) { podcastId in
-                PodcastLearningView(podcastId: podcastId)
+                .navigationTitle("收藏")
+                .navigationBarTitleDisplayMode(.large)
+                .navigationDestination(for: String.self) { podcastId in
+                    PodcastLearningView(podcastId: podcastId)
+                }
             }
         }
     }
