@@ -12,17 +12,17 @@ struct ContentView: View {
         TabView {
             FirstLevelView()
                 .tabItem {
-                    Image(systemName: "sailboat")
+                    Image(systemName: "books.vertical")
                 }
 
             FavoritesView()
                 .tabItem {
-                    Image(systemName: "books.vertical")
+                    Image(systemName: "heart")
                 }
 
             SubscriptionView()
                 .tabItem {
-                    Image(systemName: "globe.asia.australia.fill")
+                    Image(systemName: "storefront")
                 }
         }
     }

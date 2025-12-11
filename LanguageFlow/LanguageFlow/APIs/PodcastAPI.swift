@@ -9,10 +9,12 @@ import Alamofire
 class PodcastAPI {
     static let shared = PodcastAPI()
 
-    private let baseURL: String
-
-    init(baseURL: String = "https://elegantfish.online/podcast") {
-        self.baseURL = baseURL
+    private var baseURL: String {
+        #if DEBUG
+        return DebugConfig.baseURL
+        #else
+        return CommonConstants.baseURL
+        #endif
     }
 
     func getAllChannels() async throws -> [Channel] {

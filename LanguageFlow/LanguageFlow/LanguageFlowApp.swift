@@ -11,6 +11,9 @@ import SwiftData
 @main
 struct LanguageFlowApp: App {
     @State private var authManager = AuthManager.shared
+    #if DEBUG
+    @State private var showDebugPanel = false
+    #endif
 
     init() {
         Task {
@@ -37,6 +40,17 @@ struct LanguageFlowApp: App {
         WindowGroup {
             ContentView()
                 .environment(authManager)
+                #if DEBUG
+                .overlay(
+                    ShakeDetector {
+                        showDebugPanel = true
+                    }
+                    .allowsHitTesting(false)
+                )
+                .sheet(isPresented: $showDebugPanel) {
+                    DebugPanelView(onDismiss: { showDebugPanel = false })
+                }
+                #endif
         }
         .modelContainer(for: [FavoritePodcast.self, FavoriteSegment.self])
     }

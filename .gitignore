@@ -21,3 +21,5 @@
 # Server (认证和内购功能已整合到server目录)
 /server/__pycache__
 /server/**/__pycache__
+local/translator/__pycache__
+__pycache__

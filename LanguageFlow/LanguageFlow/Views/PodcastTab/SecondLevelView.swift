@@ -18,6 +18,10 @@ struct SecondLevelView: View {
     @State private var isPageLoading = false
     @State private var pageLoadError: String?
     @State private var areTranslationsHidden = true
+    @State private var showSubscriptionBanner = false
+    @State private var toastMessage: String?
+    @State private var navigateToPodcastId: String?
+    @Environment(AuthManager.self) private var authManager
 
     var body: some View {
         Group {
@@ -42,23 +46,31 @@ struct SecondLevelView: View {
                                 Task { await loadPage(page: currentPage) }
                             }
                         } else {
-                            ScrollView {
-                                LazyVStack(spacing: 14) {
-                                    ForEach(podcasts) { podcast in
-                                        NavigationLink {
-                                            PodcastLearningView(podcastId: podcast.id)
-                                        } label: {
+                            ZStack(alignment: .bottom) {
+                                ScrollView {
+                                    LazyVStack(spacing: 14) {
+                                        ForEach(podcasts) { podcast in
                                             PodcastCardView(
                                                 podcast: podcast,
                                                 showTranslation: !areTranslationsHidden,
                                                 durationText: formatDurationMinutes(podcast.duration),
                                                 segmentText: formatSegmentCount(podcast.segmentCount)
                                             )
+                                            .contentShape(Rectangle())
+                                            .onTapGesture {
+                                                handlePodcastTap(podcast)
+                                            }
                                         }
-                                        .buttonStyle(.plain)
                                     }
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, showSubscriptionBanner ? 80 : 16)
                                 }
-                                .padding(.horizontal, 16)
+
+                                // 底部订阅横幅
+                                if showSubscriptionBanner {
+                                    subscriptionBanner
+                                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                                }
                             }
                         }
                     }
@@ -70,6 +82,18 @@ struct SecondLevelView: View {
         .navigationTitle(channel.channel)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .navigationDestination(item: $navigateToPodcastId) { podcastId in
+            PodcastLearningView(podcastId: podcastId)
+        }
+        .overlay(alignment: .top) {
+            // Toast 提示
+            if let message = toastMessage {
+                ToastView(message: message)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(999)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -90,6 +114,68 @@ struct SecondLevelView: View {
 }
 
 private extension SecondLevelView {
+    func handlePodcastTap(_ podcast: PodcastSummary) {
+        // 免费内容或VIP用户：直接导航
+        if podcast.isFree || authManager.isVIP {
+            navigateToPodcastId = podcast.id
+        } else {
+            // 付费内容且非VIP：显示提示
+            showToast("订阅 Pro 解锁完整内容")
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showSubscriptionBanner = true
+            }
+        }
+    }
+
+    func showToast(_ message: String) {
+        toastMessage = message
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3秒
+            withAnimation {
+                toastMessage = nil
+            }
+        }
+    }
+
+    var subscriptionBanner: some View {
+        NavigationLink(destination: SubscriptionView()) {
+            HStack(spacing: 12) {
+                Image(systemName: "lock.fill")
+                    .font(.title3)
+                    .foregroundColor(.white)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("解锁所有播客内容")
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    Text("订阅 Pro 畅听无限")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.9))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            .padding()
+            .background(
+                LinearGradient(
+                    colors: [Color.accentColor, Color.accentColor.opacity(0.8)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(12)
+            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        }
+        .buttonStyle(.plain)
+    }
+
     func loadFirstPageIfNeeded() async {
         guard podcasts.isEmpty else { return }
         pageCache.removeAll()
@@ -209,12 +295,32 @@ private extension SecondLevelView {
     }
 }
 
+// MARK: - Toast View
+struct ToastView: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundColor(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.85))
+            )
+            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+    }
+}
+
 // MARK: - Podcast Card
 struct PodcastCardView: View {
     let podcast: PodcastSummary
     let showTranslation: Bool
     let durationText: String
     let segmentText: String
+    @Environment(AuthManager.self) private var authManager
 
     private var originalTitle: String {
         let base = (podcast.title ?? podcast.titleTranslation ?? "无标题").removingTrailingDateSuffix()
@@ -236,26 +342,55 @@ struct PodcastCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(originalTitle)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(originalTitle)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                if let translatedTitle {
-                    Text(translatedTitle)
-                        .font(.subheadline)
+                        if let translatedTitle {
+                            Text(translatedTitle)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .blur(radius: showTranslation ? 0 : 5)
+                                .animation(.easeInOut(duration: 0.2), value: showTranslation)
+                        }
+                    }
+
+                    Spacer()
+
+                    // 锁图标（非VIP用户看到付费内容）
+                    if !podcast.isFree && !authManager.isVIP {
+                        Image(systemName: "lock.fill")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text("\(durationText) • \(segmentText)")
+                        .font(.caption2)
                         .foregroundColor(.secondary)
-                        .blur(radius: showTranslation ? 0 : 5)
-                        .animation(.easeInOut(duration: 0.2), value: showTranslation)
+
+                    // 免费试听标签
+                    if podcast.isFree {
+                        Text("免费试听")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.green.opacity(0.15))
+                            )
+                    }
                 }
             }
-
-            Text("\(durationText) • \(segmentText)")
-                .font(.caption2)
-                .foregroundColor(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -12,7 +12,13 @@ import Alamofire
 final class AuthManager {
     static let shared = AuthManager()
 
-    private let baseURL = "https://elegantfish.online/podcast"
+    private var baseURL: String {
+        #if DEBUG
+        return DebugConfig.baseURL
+        #else
+        return CommonConstants.baseURL
+        #endif
+    }
     private let cacheInterval: TimeInterval = 60 * 60
 
     private var deviceUUID: String
@@ -72,9 +78,17 @@ final class AuthManager {
 
         print("[Info] User status synced: isVIP=\(self.isVIP), status=\(self.deviceStatus)")
 
-        if self.deviceStatus == .kicked {
-            self.showKickedAlert()
-        }
+//        if self.deviceStatus == .kicked {
+//            self.showKickedAlert()
+//        }
+    }
+
+    func applyVerification(from verifyData: VerifyData) {
+        self.isVIP = verifyData.isVIP
+        self.vipExpireTime = verifyData.vipExpireTime
+        self.deviceStatus = .active
+        self.lastRefreshTime = Date()
+        print("[Info] User status updated from verify: isVIP=\(verifyData.isVIP)")
     }
 
     func getDeviceUUID() -> String {

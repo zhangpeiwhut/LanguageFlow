@@ -39,6 +39,11 @@ class PodcastDatabase:
             CREATE INDEX IF NOT EXISTS idx_company_channel 
             ON podcasts(company, channel)
         """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_company_channel_timestamp_id
+            ON podcasts(company, channel, timestamp DESC, id DESC)
+        """)
         
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_timestamp 
@@ -213,11 +218,23 @@ class PodcastDatabase:
     def get_channel_podcasts_by_timestamp(self, company: str, channel: str, timestamp: int) -> List[Dict[str, Any]]:
         """
         获取某个频道某个日期的所有podcasts摘要
+        若请求的日期是该频道最新日期，则当日列表首条为免费试听
         """
         start_timestamp = timestamp
         end_timestamp = start_timestamp + 86400  # 24小时后
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT MAX(timestamp) FROM podcasts
+            WHERE company = ? AND channel = ?
+        """, (company, channel))
+        latest_ts = cursor.fetchone()[0]
+        latest_date_start = None
+        if latest_ts is not None:
+            latest_date = datetime.utcfromtimestamp(latest_ts)
+            latest_date_start = int(datetime(latest_date.year, latest_date.month, latest_date.day).timestamp())
+
         cursor.execute("""
             SELECT id, title, titleTranslation, duration, segmentCount
             FROM podcasts
@@ -230,13 +247,19 @@ class PodcastDatabase:
         conn.close()
         
         results = []
-        for row in rows:
+        for index, row in enumerate(rows):
+            is_free = (
+                latest_date_start is not None
+                and start_timestamp == latest_date_start
+                and index == 0
+            )
             results.append({
                 'id': row[0],
                 'title': row[1],
                 'titleTranslation': row[2],
                 'duration': row[3],
-                'segmentCount': row[4]  # 从数据库读取实际数量
+                'segmentCount': row[4],  # 从数据库读取实际数量
+                'isFree': is_free,
             })
         
         return results
@@ -250,6 +273,7 @@ class PodcastDatabase:
     ) -> Dict[str, Any]:
         """
         按频道分页获取podcast摘要，按时间倒序+id倒序保证稳定顺序
+        第一页的第一条标记为免费试听
         """
         offset = (page - 1) * limit
         conn = sqlite3.connect(self.db_path)
@@ -275,7 +299,10 @@ class PodcastDatabase:
         conn.close()
 
         podcasts = []
-        for row in rows:
+        for index, row in enumerate(rows):
+            # 只有第一页的第一条是免费的
+            is_free = (page == 1 and index == 0)
+
             podcasts.append({
                 'id': row['id'],
                 'title': row['title'],
@@ -283,9 +310,49 @@ class PodcastDatabase:
                 'duration': row['duration'],
                 'segmentCount': row['segmentCount'],
                 'timestamp': row['timestamp'],
+                'isFree': is_free,
             })
 
         return {
             'total': total,
             'podcasts': podcasts,
         }
+
+    def is_podcast_free(self, company: str, channel: str, podcast_id: str) -> bool:
+        """
+        判断某个 podcast 是否免费
+        规则：该频道下按时间倒序排列的第一条是免费的
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT timestamp, id
+            FROM podcasts
+            WHERE id = ? AND company = ? AND channel = ?
+        """, (podcast_id, company, channel))
+
+        current = cursor.fetchone()
+        if not current:
+            conn.close()
+            return False
+
+        current_ts, current_id = current
+
+        # 如果存在更“新”的一条，则当前不是免费的
+        cursor.execute("""
+            SELECT 1
+            FROM podcasts
+            WHERE company = ?
+              AND channel = ?
+              AND (
+                    timestamp > ?
+                 OR (timestamp = ? AND id > ?)
+              )
+            LIMIT 1
+        """, (company, channel, current_ts, current_ts, current_id))
+
+        has_newer = cursor.fetchone() is not None
+        conn.close()
+
+        return not has_newer

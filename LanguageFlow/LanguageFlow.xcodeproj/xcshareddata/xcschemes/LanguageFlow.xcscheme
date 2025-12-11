@@ -50,9 +50,13 @@
             ReferencedContainer = "container:LanguageFlow.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <StoreKitConfigurationFileReference
-         identifier = "../../LanguageFlow/Store.storekit">
-      </StoreKitConfigurationFileReference>
+      <AdditionalOptions>
+         <AdditionalOption
+            key = "APP_DISTRIBUTOR_ID_OVERRIDE"
+            value = "com.apple.AppStore"
+            isEnabled = "YES">
+         </AdditionalOption>
+      </AdditionalOptions>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

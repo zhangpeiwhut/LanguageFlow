@@ -2,8 +2,11 @@
 设备绑定管理工具（使用 SQLite）
 """
 import sqlite3
+import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger('languageflow.payment')
 
 
 class DeviceManager:
@@ -44,6 +47,12 @@ class DeviceManager:
             ORDER BY last_active_time ASC
         """, (original_transaction_id,))
         bindings = cursor.fetchall()
+        logger.info(
+            "绑定设备请求 original_transaction_id=%s device_uuid=%s 当前绑定数=%s",
+            original_transaction_id,
+            device_uuid,
+            len(bindings)
+        )
 
         # 情况1: 该设备已绑定，更新活跃时间
         for binding in bindings:
@@ -55,6 +64,11 @@ class DeviceManager:
                     WHERE original_transaction_id = ? AND device_uuid = ?
                 """, (now_ms, original_transaction_id, device_uuid))
                 conn.commit()
+                logger.info(
+                    "设备已绑定，刷新活跃时间 original_transaction_id=%s device_uuid=%s",
+                    original_transaction_id,
+                    device_uuid
+                )
 
                 return {
                     'code': 0,
@@ -78,6 +92,12 @@ class DeviceManager:
             """, (len(bindings) + 1, original_transaction_id))
 
             conn.commit()
+            logger.info(
+                "新设备绑定成功 original_transaction_id=%s device_uuid=%s device_count=%s",
+                original_transaction_id,
+                device_uuid,
+                len(bindings) + 1
+            )
 
             return {
                 'code': 0,
@@ -110,6 +130,12 @@ class DeviceManager:
         """, (original_transaction_id, device_uuid, device_name, now_ms, now_ms))
 
         conn.commit()
+        logger.info(
+            "踢出旧设备并绑定新设备 original_transaction_id=%s kicked_device=%s new_device=%s",
+            original_transaction_id,
+            kicked_device_uuid,
+            device_uuid
+        )
 
         return {
             'code': 0,
@@ -184,6 +210,13 @@ class DeviceManager:
 
         cursor = conn.cursor()
 
+        logger.info(
+            "请求解绑设备 original_transaction_id=%s current_device=%s target_device=%s",
+            original_transaction_id,
+            current_device_uuid,
+            target_device_uuid
+        )
+
         # 查找目标设备绑定
         cursor.execute("""
             SELECT 1 FROM device_bindings
@@ -215,5 +248,10 @@ class DeviceManager:
         """, (target_device_uuid,))
 
         conn.commit()
+        logger.info(
+            "解绑成功 original_transaction_id=%s target_device=%s",
+            original_transaction_id,
+            target_device_uuid
+        )
 
         return {'code': 0, 'message': 'Device unbound successfully'}

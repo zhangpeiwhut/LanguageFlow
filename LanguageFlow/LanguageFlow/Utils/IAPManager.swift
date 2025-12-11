@@ -20,7 +20,13 @@ final class IAPManager {
     var isLoading: Bool = false
 
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
-    private let baseURL = "https://elegantfish.online/podcast"
+    private var baseURL: String {
+        #if DEBUG
+        return DebugConfig.baseURL
+        #else
+        return CommonConstants.baseURL
+        #endif
+    }
 
     init() {
         updatesTask = Task { await observeTransactionUpdates() }
@@ -32,7 +38,7 @@ final class IAPManager {
 
     func refresh() async {
         await loadProducts()
-        try? await AuthManager.shared.syncUserStatus(force: true)
+        try? await AuthManager.shared.syncUserStatus()
     }
 
     func loadProducts() async {
@@ -55,13 +61,13 @@ final class IAPManager {
             case .success(let verification):
                 let jwsToken = verification.jwsRepresentation
                 let transaction = try checkVerified(verification)
+                logTransaction(event: "purchase_success", transaction: transaction, jwsToken: jwsToken)
                 try await verifyPurchaseWithServer(
                     jwsToken: jwsToken,
                     transaction: transaction,
                     eventType: "purchase"
                 )
                 await transaction.finish()
-                try await AuthManager.shared.syncUserStatus(force: true)
                 print("[Info] User purchased")
             case .userCancelled:
                 print("[Info] User cancelled purchase")
@@ -85,6 +91,7 @@ final class IAPManager {
                 do {
                     let jwsToken = result.jwsRepresentation
                     let transaction = try checkVerified(result)
+                    logTransaction(event: "restore_entitlement", transaction: transaction, jwsToken: jwsToken)
                     try await verifyPurchaseWithServer(
                         jwsToken: jwsToken,
                         transaction: transaction,
@@ -93,7 +100,6 @@ final class IAPManager {
                     await transaction.finish()
                     restored = true
                     print("[Info] User restored")
-                    try await AuthManager.shared.syncUserStatus(force: true)
                 } catch {
                     print("[error] Failed to restore transaction: \(error)")
                     continue
@@ -112,6 +118,8 @@ final class IAPManager {
         transaction: Transaction,
         eventType: String
     ) async throws {
+        logTransaction(event: "send_verify", transaction: transaction, jwsToken: jwsToken, extra: "eventType=\(eventType)")
+
         let parameters: [String: Any] = [
             "jws_token": jwsToken,
             "device_name": UIDevice.current.name,
@@ -133,6 +141,10 @@ final class IAPManager {
         if let kickedDevice = verifyResponse.data.kickedDevice {
             print("[Info] Device kicked: \(kickedDevice)")
         }
+
+        logTransaction(event: "verify_success", transaction: transaction, jwsToken: jwsToken, extra: "eventType=\(eventType)")
+
+        AuthManager.shared.applyVerification(from: verifyResponse.data)
     }
 
     /// 监听交易更新（自动续费、退款等）
@@ -141,6 +153,7 @@ final class IAPManager {
             do {
                 let jwsToken = result.jwsRepresentation
                 let transaction = try checkVerified(result)
+                logTransaction(event: "transaction_update", transaction: transaction, jwsToken: jwsToken)
                 // 自动处理续费
                 try await verifyPurchaseWithServer(
                     jwsToken: jwsToken,
@@ -148,8 +161,6 @@ final class IAPManager {
                     eventType: "renew"
                 )
                 await transaction.finish()
-                // 强制刷新会员状态
-                try await AuthManager.shared.syncUserStatus(force: true)
             } catch {
                 print("[error] Transaction update failed: \(error)")
             }
@@ -170,6 +181,21 @@ final class IAPManager {
         decoder.dateDecodingStrategy = .millisecondsSince1970
         return decoder
     }()
+
+    private func logTransaction(event: String, transaction: Transaction, jwsToken: String, extra: String? = nil) {
+        let jwsPrefix = String(jwsToken.prefix(12))
+        let message = [
+            "event=\(event)",
+            "id=\(transaction.id)",
+            "originalId=\(transaction.originalID)",
+            "product=\(transaction.productID)",
+            "purchaseDate=\(transaction.purchaseDate)",
+            "state=\(transaction.revocationDate == nil ? "active" : "revoked")",
+            "jwsPrefix=\(jwsPrefix)",
+            extra
+        ].compactMap { $0 }.joined(separator: " ")
+        print("[IAP] \(message)")
+    }
 }
 
 // MARK: - Related

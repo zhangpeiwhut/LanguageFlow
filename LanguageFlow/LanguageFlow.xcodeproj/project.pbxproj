@@ -9,12 +9,12 @@
 /* Begin PBXBuildFile section */
 		853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 853A2BF12ED0AFF20011FDBC /* Alamofire */; };
 		854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 854609CF2ECC55E1004D4163 /* ComposableArchitecture */; };
-		85A350722EDC6ED3006A1CBD /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 85A350712EDC6ED3006A1CBD /* StoreKit.framework */; };
+		855641102EE96905005ECA6D /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8556410F2EE96905005ECA6D /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		854609C02ECC5590004D4163 /* LanguageFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LanguageFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		85A350712EDC6ED3006A1CBD /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		8556410F2EE96905005ECA6D /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -43,7 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				85A350722EDC6ED3006A1CBD /* StoreKit.framework in Frameworks */,
+				855641102EE96905005ECA6D /* StoreKit.framework in Frameworks */,
 				854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */,
 				853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */,
 			);
@@ -72,7 +72,7 @@
 		85A350702EDC6ED3006A1CBD /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				85A350712EDC6ED3006A1CBD /* StoreKit.framework */,
+				8556410F2EE96905005ECA6D /* StoreKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

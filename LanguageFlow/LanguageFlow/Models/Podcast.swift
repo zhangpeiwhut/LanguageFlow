@@ -21,6 +21,7 @@ struct PodcastSummary: Codable, Identifiable {
     let titleTranslation: String?
     let segmentCount: Int?
     let duration: Int?
+    let isFree: Bool
 }
 
 struct Podcast: Codable, Identifiable {

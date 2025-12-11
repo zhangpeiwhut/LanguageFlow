@@ -13,13 +13,19 @@ struct DevicesManagementView: View {
     @State private var showAlert = false
     @State private var deviceToUnbind: BoundDevice?
 
-    private let baseURL = "https://elegantfish.online/podcast"
+    private var baseURL: String {
+        #if DEBUG
+        return DebugConfig.baseURL
+        #else
+        return CommonConstants.baseURL
+        #endif
+    }
 
     var body: some View {
         Group {
             if isLoading {
                 LoadingView()
-            } else if let error = errorMessage {
+            } else if errorMessage != nil {
                 ErrorView {
                     Task { await loadDevices() }
                 }

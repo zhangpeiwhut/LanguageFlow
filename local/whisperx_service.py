@@ -5,6 +5,11 @@ import time
 from pathlib import Path
 from typing import Dict, Tuple
 import torch
+_real_torch_load = torch.load
+def _torch_load_legacy(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _real_torch_load(*args, **kwargs)
+torch.load = _torch_load_legacy
 import whisperx
 import httpx
 

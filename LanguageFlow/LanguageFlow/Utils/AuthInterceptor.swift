@@ -47,9 +47,7 @@ final class AuthInterceptor: RequestInterceptor {
         dueTo error: Error,
         completion: @escaping (RetryResult) -> Void
     ) {
-        guard let response = request.task?.response as? HTTPURLResponse,
-              response.statusCode == 401 else {
-            // 不是 401，不重试
+        guard let response = request.task?.response as? HTTPURLResponse else {
             completion(.doNotRetryWithError(error))
             return
         }
@@ -59,22 +57,50 @@ final class AuthInterceptor: RequestInterceptor {
             "/auth/register",
             "/info/channels"
         ]
-        
-        // 如果是不需要鉴权的接口返回 401，说明有其他问题，不重试
-        if let path = request.request?.url?.path,
-           noAuthPaths.contains(where: { path.contains($0) }) {
+
+        let path = request.request?.url?.path ?? ""
+        let isNoAuthPath = noAuthPaths.contains(where: { path.contains($0) })
+
+        // 如果是不需要鉴权的接口，不处理
+        if isNoAuthPath {
             completion(.doNotRetryWithError(error))
             return
         }
 
-        // 使用 actor 保护的状态管理
-        Task {
-            let shouldStartRefresh = await refreshState.addRequestToRetry(completion)
-            
-            if shouldStartRefresh {
-                await refreshToken()
+        // 处理 401: Token 过期，刷新后重试
+        if response.statusCode == 401 {
+            Task {
+                let shouldStartRefresh = await refreshState.addRequestToRetry(completion)
+
+                if shouldStartRefresh {
+                    await refreshToken()
+                }
             }
+            return
         }
+
+        // 处理 403: VIP 过期或设备被踢，刷新用户状态但不重试
+        if response.statusCode == 403 {
+            print("[Info] 403 Forbidden detected")
+
+            // 立即返回错误，不阻塞请求
+            completion(.doNotRetryWithError(error))
+
+            // 后台异步刷新状态（仅在当前认为是 VIP 时，检查是否过期）
+            if AuthManager.shared.isVIP {
+                Task {
+                    print("[Info] Current user is VIP, refreshing status to check expiration...")
+                    try? await AuthManager.shared.syncUserStatus(force: true)
+                }
+            } else {
+                print("[Info] Current user is not VIP, skipping status refresh")
+            }
+
+            return
+        }
+
+        // 其他错误，不重试
+        completion(.doNotRetryWithError(error))
     }
 
     // MARK: - Private Methods

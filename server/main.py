@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import logging
+import time
 from fastapi import FastAPI, HTTPException, Query, APIRouter, Body, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +21,17 @@ app = FastAPI(
     version='1.0.0',
 )
 
+# 统一日志格式，方便本地调试购买流程
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
+
+logger = logging.getLogger('languageflow')
+payment_logger = logging.getLogger('languageflow.payment')
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -26,6 +39,21 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """简单请求日志：方法、路径、状态码与耗时"""
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        "HTTP %s %s status=%s duration=%.1fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 podcast_router = APIRouter(prefix="/podcast/info", tags=["podcast"])
 auth_router = APIRouter(prefix="/podcast/auth", tags=["authentication"])
@@ -46,8 +74,13 @@ def get_db_connection():
 # 初始化COS服务（用于生成预签名URL）
 try:
     cos_service = COSService()
+    logger.info(
+        "COS 服务初始化成功 cdn_domain=%s bucket=%s",
+        getattr(cos_service, "cdn_domain", None),
+        getattr(cos_service, "bucket", None)
+    )
 except Exception as e:
-    print(f'[podcast-service] COS服务初始化失败: {e}')
+    logger.error('[podcast-service] COS服务初始化失败: %s', e)
     cos_service = None
 
 def _validate_and_insert_podcast(podcast: Dict[str, Any]) -> tuple[str, bool]:
@@ -75,6 +108,10 @@ async def get_podcasts(
 ):
     try:
         podcasts = podcast_db.get_podcasts_by_timestamp(company, channel, timestamp)
+        logger.info(
+            "查询podcasts company=%s channel=%s timestamp=%s count=%s",
+            company, channel, timestamp, len(podcasts)
+        )
         return JSONResponse({
             'success': True,
             'count': len(podcasts),
@@ -83,7 +120,7 @@ async def get_podcasts(
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 查询podcasts失败: {error}')
+        logger.exception('[podcast-service] 查询podcasts失败')
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
@@ -96,13 +133,14 @@ async def get_all_channels():
     """
     try:
         channels = podcast_db.get_all_channels()
+        logger.info("获取频道列表 count=%s", len(channels))
         return JSONResponse({
             'success': True,
             'count': len(channels),
             'channels': channels
         })
     except Exception as error:
-        print(f'[podcast-service] 获取频道列表失败: {error}')
+        logger.exception('[podcast-service] 获取频道列表失败')
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
@@ -117,6 +155,10 @@ async def get_channel_dates(
     """
     try:
         timestamps = podcast_db.get_channel_dates(company, channel)
+        logger.info(
+            "获取频道日期 company=%s channel=%s count=%s",
+            company, channel, len(timestamps)
+        )
         return JSONResponse({
             'success': True,
             'company': company,
@@ -125,7 +167,7 @@ async def get_channel_dates(
             'timestamps': timestamps
         })
     except Exception as error:
-        print(f'[podcast-service] 获取频道日期列表失败: {error}')
+        logger.exception('[podcast-service] 获取频道日期列表失败')
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
@@ -138,6 +180,10 @@ async def get_channel_podcasts(
 ):
     try:
         podcasts = podcast_db.get_channel_podcasts_by_timestamp(company, channel, timestamp)
+        logger.info(
+            "获取频道podcasts company=%s channel=%s timestamp=%s count=%s",
+            company, channel, timestamp, len(podcasts)
+        )
         return JSONResponse({
             'success': True,
             'company': company,
@@ -149,7 +195,7 @@ async def get_channel_podcasts(
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 获取频道podcasts失败: {error}')
+        logger.exception('[podcast-service] 获取频道podcasts失败')
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 @podcast_router.get('/channels/{company}/{channel}/podcasts/paged')
@@ -171,6 +217,10 @@ async def get_channel_podcasts_paginated(
         total = data['total']
         podcasts = data['podcasts']
         total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        logger.info(
+            "分页获取频道podcasts company=%s channel=%s page=%s limit=%s count=%s total=%s",
+            company, channel, page, limit, len(podcasts), total
+        )
         return JSONResponse({
             'success': True,
             'company': company,
@@ -185,7 +235,7 @@ async def get_channel_podcasts_paginated(
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 获取频道podcasts（分页）失败: {error}')
+        logger.exception('[podcast-service] 获取频道podcasts（分页）失败')
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
@@ -199,31 +249,63 @@ async def check_podcast_complete(
     """
     try:
         is_complete = podcast_db.is_podcast_complete(podcast_id)
+        logger.info(
+            "检查podcast完整性 podcast_id=%s exists=%s is_complete=%s",
+            podcast_id,
+            podcast_db.podcast_exists(podcast_id),
+            is_complete
+        )
         return JSONResponse({
             'success': True,
             'exists': podcast_db.podcast_exists(podcast_id),
             'is_complete': is_complete
         })
     except Exception as error:
-        print(f'[podcast-service] 检查podcast失败: {error}')
+        logger.exception('[podcast-service] 检查podcast失败')
         raise HTTPException(status_code=500, detail=f'检查失败: {str(error)}')
 
 
 @podcast_router.get('/detail/{podcast_id}')
 async def get_podcast_detail_by_id(
-    _: Annotated[str, Depends(get_current_device_uuid)],
+    device_uuid: Annotated[str, Depends(get_current_device_uuid)],
     podcast_id: str,
     expires: int = Query(180, description='URL有效期（秒），默认180秒（3分钟）', ge=60, le=3600),
 ):
     """
     根据ID获取podcast详情
     会自动生成临时URL（预签名URL）并返回
+    需要VIP权限（免费试听除外）
     """
     try:
         podcast = podcast_db.get_podcast_by_id(podcast_id)
-        
+
         if not podcast:
             raise HTTPException(status_code=404, detail='Podcast not found')
+        logger.info("查询podcast详情 podcast_id=%s device_uuid=%s", podcast_id, device_uuid)
+
+        # 权限检查：判断是否免费
+        company = podcast.get('company')
+        channel = podcast.get('channel')
+        is_free = podcast_db.is_podcast_free(company, channel, podcast_id)
+        user = None
+
+        if not is_free:
+            # 检查用户是否是 VIP
+            user = auth_db.get_user_by_uuid(device_uuid)
+            if not user or not user.get('is_vip'):
+                logger.warning(
+                    "非VIP用户尝试访问付费内容 device_uuid=%s podcast_id=%s",
+                    device_uuid, podcast_id
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="VIP membership required"
+                )
+
+        logger.info(
+            "权限检查通过 device_uuid=%s podcast_id=%s is_free=%s is_vip=%s",
+            device_uuid, podcast_id, is_free, user.get('is_vip') if not is_free else 'N/A'
+        )
         
         # 检查CDN服务是否可用
         if not cos_service or not cos_service.cdn_domain:
@@ -240,7 +322,7 @@ async def get_podcast_detail_by_id(
         try:
             segments_url = cos_service.get_cdn_url(segments_key, expires=expires)
         except Exception as e:
-            print(f'[podcast-service] 生成segments CDN URL失败: {e}')
+            logger.exception('[podcast-service] 生成segments CDN URL失败')
             raise HTTPException(status_code=500, detail=f'生成segments URL失败: {str(e)}')
         
         # 生成音频CDN URL
@@ -251,13 +333,14 @@ async def get_podcast_detail_by_id(
         try:
             audio_url = cos_service.get_cdn_url(audio_key, expires=expires)
         except Exception as e:
-            print(f'[podcast-service] 生成音频CDN URL失败: {e}')
+            logger.exception('[podcast-service] 生成音频CDN URL失败')
             raise HTTPException(status_code=500, detail=f'生成音频URL失败: {str(e)}')
         
         # 返回podcast详情，包含CDN URL
         result = dict(podcast)
         result['segmentsURL'] = segments_url
         result['audioURL'] = audio_url
+        result['isFree'] = is_free
         result.pop('segmentsKey', None)
         result.pop('audioKey', None)
         
@@ -269,7 +352,7 @@ async def get_podcast_detail_by_id(
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 查询podcast失败: {error}')
+        logger.exception('[podcast-service] 查询podcast失败')
         raise HTTPException(status_code=500, detail=f'查询失败: {str(error)}')
 
 
@@ -295,7 +378,13 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
     """
     try:
         podcast_id, _ = _validate_and_insert_podcast(podcast)
-        print(f'[podcast-service] 成功上传podcast: {podcast_id} - {podcast.get("title", "Unknown")}')
+        logger.info(
+            '成功上传podcast id=%s title=%s company=%s channel=%s',
+            podcast_id,
+            podcast.get("title", "Unknown"),
+            podcast.get("company"),
+            podcast.get("channel"),
+        )
         return JSONResponse({
             'success': True,
             'message': 'Podcast上传成功',
@@ -307,7 +396,7 @@ async def upload_podcast(podcast: Dict[str, Any] = Body(...)):
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 上传podcast失败: {error}')
+        logger.exception('[podcast-service] 上传podcast失败')
         raise HTTPException(status_code=500, detail=f'上传失败: {str(error)}')
 
 
@@ -337,17 +426,22 @@ async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
             try:
                 podcast_id, _ = _validate_and_insert_podcast(podcast)
                 success_count += 1
-                print(f'[podcast-service] 成功上传podcast: {podcast_id}')
+                logger.info(
+                    '批量上传成功 podcast_id=%s company=%s channel=%s',
+                    podcast_id,
+                    podcast.get("company"),
+                    podcast.get("channel"),
+                )
             except ValueError as e:
                 fail_count += 1
                 podcast_id = podcast.get('id', 'unknown')
                 failed_ids.append(podcast_id)
-                print(f'[podcast-service] 跳过podcast ({podcast_id}): {e}')
+                logger.warning('[podcast-service] 跳过podcast (%s): %s', podcast_id, e)
             except Exception as e:
                 fail_count += 1
                 podcast_id = podcast.get('id', 'unknown')
                 failed_ids.append(podcast_id)
-                print(f'[podcast-service] 上传podcast失败 ({podcast_id}): {e}')
+                logger.exception('[podcast-service] 上传podcast失败 (%s)', podcast_id)
         
         return JSONResponse({
             'success': True,
@@ -361,7 +455,7 @@ async def upload_podcasts_batch(podcasts: List[Dict[str, Any]] = Body(...)):
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[podcast-service] 批量上传失败: {error}')
+        logger.exception('[podcast-service] 批量上传失败')
         raise HTTPException(status_code=500, detail=f'批量上传失败: {str(error)}')
 
 @auth_router.post('/register')
@@ -369,9 +463,15 @@ async def register_or_login(request: RegisterRequest):
     """注册或登录"""
     try:
         result = register_or_login_handler(request, auth_db)
+        logger.info(
+            "注册/登录完成 device_uuid=%s is_vip=%s device_status=%s",
+            request.device_uuid,
+            result["data"].get("is_vip"),
+            result["data"].get("device_status"),
+        )
         return JSONResponse(result)
     except Exception as error:
-        print(f'[server] 注册失败: {error}')
+        logger.exception('[server] 注册失败')
         raise HTTPException(status_code=500, detail=f'注册失败: {str(error)}')
 
 
@@ -382,13 +482,26 @@ async def verify_purchase(
 ):
     """验证购买凭证"""
     try:
+        payment_logger.info(
+            "收到内购校验请求 device_uuid=%s event=%s device_name=%s",
+            device_uuid, request.event_type, request.device_name
+        )
         with get_db_connection() as conn:
             result = verify_purchase_handler(request, device_uuid, auth_db, conn)
+            payment_logger.info(
+                "内购校验完成 device_uuid=%s event=%s vip=%s expire=%s kicked=%s bound=%s",
+                device_uuid,
+                request.event_type,
+                result["data"].get("is_vip"),
+                result["data"].get("vip_expire_time"),
+                result["data"].get("kicked_device"),
+                result["data"].get("bound_devices"),
+            )
             return JSONResponse(result)
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[server] 验证购买失败: {error}')
+        payment_logger.exception('[server] 验证购买失败 device_uuid=%s', device_uuid)
         raise HTTPException(status_code=500, detail=f'验证失败: {str(error)}')
 
 
@@ -400,11 +513,16 @@ async def get_devices(
     try:
         with get_db_connection() as conn:
             result = get_devices_handler(device_uuid, auth_db, conn)
+            logger.info(
+                "查询绑定设备 device_uuid=%s count=%s",
+                device_uuid,
+                len(result.get("data", {}).get("devices", [])),
+            )
             return JSONResponse(result)
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[server] 获取设备列表失败: {error}')
+        logger.exception('[server] 获取设备列表失败 device_uuid=%s', device_uuid)
         raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
 
 
@@ -417,11 +535,17 @@ async def unbind_device(
     try:
         with get_db_connection() as conn:
             result = unbind_device_handler(device_uuid, target_device_uuid, auth_db, conn)
+            logger.info(
+                "解绑设备完成 device_uuid=%s target_device=%s code=%s",
+                device_uuid,
+                target_device_uuid,
+                result.get("code"),
+            )
             return JSONResponse(result)
     except HTTPException:
         raise
     except Exception as error:
-        print(f'[server] 解绑设备失败: {error}')
+        logger.exception('[server] 解绑设备失败 device_uuid=%s target_device=%s', device_uuid, target_device_uuid)
         raise HTTPException(status_code=500, detail=f'解绑失败: {str(error)}')
 
 
