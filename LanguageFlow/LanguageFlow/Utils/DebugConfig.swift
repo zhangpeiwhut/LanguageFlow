@@ -22,7 +22,7 @@ extension DebugConfig {
             case .production:
                 return CommonConstants.baseURL
             case .development:
-                return "http://10.1.29.17:8001/podcast"
+                return "http://192.168.0.244:8001/podcast"
             }
         }
 
