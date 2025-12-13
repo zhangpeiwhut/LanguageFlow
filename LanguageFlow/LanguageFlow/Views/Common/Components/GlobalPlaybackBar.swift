@@ -16,6 +16,39 @@ struct GlobalPlaybackBar: View {
     let isFavorited: Bool
     let onToggleFavorite: () -> Void
 
+    init(
+        title: String,
+        titleTranslation: String,
+        isPlaying: Bool,
+        playbackRate: Double,
+        progressBinding: Binding<Double>,
+        currentTime: Double,
+        duration: Double,
+        onTogglePlay: @escaping () -> Void,
+        onPrevious: @escaping () -> Void,
+        onNext: @escaping () -> Void,
+        onChangeRate: @escaping (Double) -> Void,
+        onSeekEditingChanged: @escaping (Bool) -> Void,
+        isFavorited: Bool,
+        onToggleFavorite: @escaping () -> Void,
+        onShadowingTap: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.titleTranslation = titleTranslation
+        self.isPlaying = isPlaying
+        self.playbackRate = playbackRate
+        self.progressBinding = progressBinding
+        self.currentTime = currentTime
+        self.duration = duration
+        self.onTogglePlay = onTogglePlay
+        self.onPrevious = onPrevious
+        self.onNext = onNext
+        self.onChangeRate = onChangeRate
+        self.onSeekEditingChanged = onSeekEditingChanged
+        self.isFavorited = isFavorited
+        self.onToggleFavorite = onToggleFavorite
+    }
+
     private let rateOptions: [Double] = [0.75, 1.0, 1.5, 2.0]
 
     private func formatTime(_ seconds: Double) -> String {
@@ -25,7 +58,7 @@ struct GlobalPlaybackBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             Slider(value: progressBinding, in: 0...1, onEditingChanged: onSeekEditingChanged)
                 .tint(Color.accentColor)
             
@@ -56,7 +89,7 @@ struct GlobalPlaybackBar: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
     

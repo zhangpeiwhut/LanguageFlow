@@ -7,14 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 853A2BF12ED0AFF20011FDBC /* Alamofire */; };
-		854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 854609CF2ECC55E1004D4163 /* ComposableArchitecture */; };
+		6D6C026F14660918B2650EB6 /* Pods_LanguageFlow.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 897211090CAC3139EB85939E /* Pods_LanguageFlow.framework */; };
 		855641102EE96905005ECA6D /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8556410F2EE96905005ECA6D /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		09E48D31C938A3AA10EB7F02 /* Pods-LanguageFlow.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LanguageFlow.release.xcconfig"; path = "Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow.release.xcconfig"; sourceTree = "<group>"; };
+		851A292D2EEEC4B8004B5F96 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/CoreAudio.framework; sourceTree = DEVELOPER_DIR; };
 		854609C02ECC5590004D4163 /* LanguageFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LanguageFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8556410F2EE96905005ECA6D /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		88C0CF93184D63B85E2FD9D6 /* Pods-LanguageFlow.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LanguageFlow.debug.xcconfig"; path = "Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow.debug.xcconfig"; sourceTree = "<group>"; };
+		897211090CAC3139EB85939E /* Pods_LanguageFlow.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_LanguageFlow.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -44,8 +47,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				855641102EE96905005ECA6D /* StoreKit.framework in Frameworks */,
-				854609D02ECC55E1004D4163 /* ComposableArchitecture in Frameworks */,
-				853A2BF22ED0AFF20011FDBC /* Alamofire in Frameworks */,
+				6D6C026F14660918B2650EB6 /* Pods_LanguageFlow.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -58,6 +60,7 @@
 				854609C22ECC5590004D4163 /* LanguageFlow */,
 				85A350702EDC6ED3006A1CBD /* Frameworks */,
 				854609C12ECC5590004D4163 /* Products */,
+				D769E8A13CE9882C18EDAF6E /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -72,9 +75,20 @@
 		85A350702EDC6ED3006A1CBD /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				851A292D2EEEC4B8004B5F96 /* CoreAudio.framework */,
 				8556410F2EE96905005ECA6D /* StoreKit.framework */,
+				897211090CAC3139EB85939E /* Pods_LanguageFlow.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D769E8A13CE9882C18EDAF6E /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				88C0CF93184D63B85E2FD9D6 /* Pods-LanguageFlow.debug.xcconfig */,
+				09E48D31C938A3AA10EB7F02 /* Pods-LanguageFlow.release.xcconfig */,
+			);
+			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -84,9 +98,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 854609CB2ECC5593004D4163 /* Build configuration list for PBXNativeTarget "LanguageFlow" */;
 			buildPhases = (
+				DF902AFDDA08EF7D817E3878 /* [CP] Check Pods Manifest.lock */,
 				854609BC2ECC5590004D4163 /* Sources */,
 				854609BD2ECC5590004D4163 /* Frameworks */,
 				854609BE2ECC5590004D4163 /* Resources */,
+				E7BCBD43D2EC81D3DBB82A94 /* [CP] Embed Pods Frameworks */,
+				8772FE3B4C96CFCB418B8CCA /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -96,10 +113,6 @@
 				854609C22ECC5590004D4163 /* LanguageFlow */,
 			);
 			name = LanguageFlow;
-			packageProductDependencies = (
-				854609CF2ECC55E1004D4163 /* ComposableArchitecture */,
-				853A2BF12ED0AFF20011FDBC /* Alamofire */,
-			);
 			productName = LanguageFlow;
 			productReference = 854609C02ECC5590004D4163 /* LanguageFlow.app */;
 			productType = "com.apple.product-type.application";
@@ -128,10 +141,6 @@
 			);
 			mainGroup = 854609B72ECC5590004D4163;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				854609CE2ECC55E1004D4163 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
-				853A2BF02ED0AFF20011FDBC /* XCRemoteSwiftPackageReference "Alamofire" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 854609C12ECC5590004D4163 /* Products */;
 			projectDirPath = "";
@@ -151,6 +160,73 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		8772FE3B4C96CFCB418B8CCA /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		DF902AFDDA08EF7D817E3878 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-LanguageFlow-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		E7BCBD43D2EC81D3DBB82A94 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-LanguageFlow/Pods-LanguageFlow-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		854609BC2ECC5590004D4163 /* Sources */ = {
@@ -201,7 +277,7 @@
 				DEVELOPMENT_TEAM = B8L26345XW;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -263,7 +339,7 @@
 				DEVELOPMENT_TEAM = B8L26345XW;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -281,6 +357,7 @@
 		};
 		854609CC2ECC5593004D4163 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 88C0CF93184D63B85E2FD9D6 /* Pods-LanguageFlow.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -305,8 +382,10 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = zhangpei.com.LanguageFlow;
@@ -328,6 +407,7 @@
 		};
 		854609CD2ECC5593004D4163 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 09E48D31C938A3AA10EB7F02 /* Pods-LanguageFlow.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -352,8 +432,10 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = zhangpei.com.LanguageFlow;
@@ -395,38 +477,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		853A2BF02ED0AFF20011FDBC /* XCRemoteSwiftPackageReference "Alamofire" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Alamofire/Alamofire.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 5.10.2;
-			};
-		};
-		854609CE2ECC55E1004D4163 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.23.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		853A2BF12ED0AFF20011FDBC /* Alamofire */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 853A2BF02ED0AFF20011FDBC /* XCRemoteSwiftPackageReference "Alamofire" */;
-			productName = Alamofire;
-		};
-		854609CF2ECC55E1004D4163 /* ComposableArchitecture */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 854609CE2ECC55E1004D4163 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
-			productName = ComposableArchitecture;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 854609B82ECC5590004D4163 /* Project object */;
 }

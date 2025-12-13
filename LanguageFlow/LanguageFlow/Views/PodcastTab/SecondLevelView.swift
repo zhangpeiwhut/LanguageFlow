@@ -21,6 +21,7 @@ struct SecondLevelView: View {
     @State private var showSubscriptionBanner = false
     @State private var toastMessage: String?
     @State private var navigateToPodcastId: String?
+    @State private var shakingPodcastAmounts: [String: CGFloat] = [:]
     @Environment(AuthManager.self) private var authManager
 
     var body: some View {
@@ -54,7 +55,8 @@ struct SecondLevelView: View {
                                                 podcast: podcast,
                                                 showTranslation: !areTranslationsHidden,
                                                 durationText: formatDurationMinutes(podcast.duration),
-                                                segmentText: formatSegmentCount(podcast.segmentCount)
+                                                segmentText: formatSegmentCount(podcast.segmentCount),
+                                                shakeAmount: shakingPodcastAmounts[podcast.id] ?? 0
                                             )
                                             .contentShape(Rectangle())
                                             .onTapGesture {
@@ -63,13 +65,12 @@ struct SecondLevelView: View {
                                         }
                                     }
                                     .padding(.horizontal, 16)
-                                    .padding(.bottom, showSubscriptionBanner ? 80 : 16)
+                                    .padding(.bottom, (!authManager.isVIP) ? 100 : 16)
                                 }
 
-                                // 底部订阅横幅
-                                if showSubscriptionBanner {
+                                // 底部订阅横幅（非VIP用户常驻显示）
+                                if !authManager.isVIP {
                                     subscriptionBanner
-                                        .transition(.move(edge: .bottom).combined(with: .opacity))
                                 }
                             }
                         }
@@ -119,10 +120,23 @@ private extension SecondLevelView {
         if podcast.isFree || authManager.isVIP {
             navigateToPodcastId = podcast.id
         } else {
-            // 付费内容且非VIP：显示提示
+            // 付费内容且非VIP：显示提示并摇晃
+            shakePodcast(podcast.id)
             showToast("订阅 Pro 解锁完整内容")
             withAnimation(.easeInOut(duration: 0.3)) {
                 showSubscriptionBanner = true
+            }
+        }
+    }
+    
+    func shakePodcast(_ podcastId: String) {
+        withAnimation(.linear(duration: 0.5).repeatCount(6, autoreverses: false)) {
+            shakingPodcastAmounts[podcastId] = 6.0
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 600_000_000) // 0.6秒
+            withAnimation {
+                shakingPodcastAmounts.removeValue(forKey: podcastId)
             }
         }
     }
@@ -139,39 +153,84 @@ private extension SecondLevelView {
 
     var subscriptionBanner: some View {
         NavigationLink(destination: SubscriptionView()) {
-            HStack(spacing: 12) {
-                Image(systemName: "lock.fill")
-                    .font(.title3)
-                    .foregroundColor(.white)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("解锁所有播客内容")
-                        .font(.headline)
+            HStack(spacing: 16) {
+                // 图标容器
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.3), Color.white.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                    
+                    Image(systemName: "crown.fill")
+                        .font(.title3)
                         .foregroundColor(.white)
-
-                    Text("订阅 Pro 畅听无限")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.9))
+                        .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
-
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("解锁所有播客内容")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Text("订阅 Pro 畅听无限")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                
                 Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
+                
+                // 箭头图标
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.white.opacity(0.9))
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .background(
-                LinearGradient(
-                    colors: [Color.accentColor, Color.accentColor.opacity(0.8)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                ZStack {
+                    // 渐变背景
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.2, green: 0.4, blue: 1.0),
+                            Color(red: 0.4, green: 0.2, blue: 0.9)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    
+                    // 装饰性光效
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.2),
+                            Color.clear,
+                            Color.white.opacity(0.1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
             )
-            .cornerRadius(12)
-            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.3), Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color(red: 0.2, green: 0.4, blue: 1.0).opacity(0.4), radius: 12, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 20)
         }
         .buttonStyle(.plain)
     }
@@ -300,17 +359,49 @@ struct ToastView: View {
     let message: String
 
     var body: some View {
-        Text(message)
-            .font(.subheadline)
-            .fontWeight(.medium)
-            .foregroundColor(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.85))
-            )
-            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.9))
+            
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(
+            Capsule()
+                .fill(
+                    .ultraThinMaterial
+                )
+                .overlay(
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.accentColor.opacity(0.9),
+                                    Color.accentColor.opacity(0.7)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                )
+        )
+        .overlay(
+            Capsule()
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.3), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
     }
 }
 
@@ -320,6 +411,7 @@ struct PodcastCardView: View {
     let showTranslation: Bool
     let durationText: String
     let segmentText: String
+    let shakeAmount: CGFloat
     @Environment(AuthManager.self) private var authManager
 
     private var originalTitle: String {
@@ -368,6 +460,7 @@ struct PodcastCardView: View {
                         Image(systemName: "lock.fill")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                            .modifier(ShakeEffect(animatableData: shakeAmount))
                     }
                 }
 
@@ -402,5 +495,15 @@ struct PodcastCardView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Shake Effect
+struct ShakeEffect: GeometryEffect {
+    var animatableData: CGFloat
+    
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let offset = sin(animatableData * .pi * 2) * 8
+        return ProjectionTransform(CGAffineTransform(translationX: offset, y: 0))
     }
 }

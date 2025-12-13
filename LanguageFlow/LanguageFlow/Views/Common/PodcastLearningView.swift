@@ -18,6 +18,7 @@ struct PodcastLearningView: View {
     @State private var errorMessage: String?
     @State private var store: PodcastLearningStore?
     @State private var lookupWord: LookupWord?
+    @State private var hasLoaded = false
 
     init(podcastId: String) {
         self.podcastId = podcastId
@@ -43,7 +44,7 @@ struct PodcastLearningView: View {
             Group {
                 if isLoading {
                     LoadingView()
-                } else if let error = errorMessage {
+                } else if errorMessage != nil  {
                     ErrorView {
                         loadPodcast()
                     }
@@ -54,6 +55,28 @@ struct PodcastLearningView: View {
                                 podcastTitleSection(for: store)
                                 SegmentListView(store: store) { word in
                                     lookupWord = LookupWord(word: word)
+                                }
+
+                                NavigationLink {
+                                    ShadowingPracticeView(
+                                        podcast: store.podcast,
+                                        segments: store.segments,
+                                        localAudioURL: store.audioFileURL,
+                                        modelContext: modelContext,
+                                        startSegmentID: nil
+                                    )
+                                } label: {
+                                    HStack {
+                                        Spacer()
+                                        Text("Step 2 · 跟读")
+                                            .font(.headline)
+                                        Image(systemName: "arrow.right")
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 16)
+                                    .background(Color.accentColor)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
                                 }
                             }
                             .padding(.top, 8)
@@ -105,9 +128,13 @@ struct PodcastLearningView: View {
             }
         }
         .task {
+            guard !hasLoaded else { return }
+            hasLoaded = true
             loadPodcast()
         }
         .toolbar(.hidden, for: .tabBar)
+        .navigationTitle("Step 1 · 精听")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if let store {
@@ -220,8 +247,10 @@ final class PodcastLearningStore {
     @ObservationIgnored private var shouldResumeAfterSeek = false
     @ObservationIgnored private var isScrubbing = false
     @ObservationIgnored private var isAudioSessionActive = false
-    @ObservationIgnored private let localAudioURL: URL
+    @ObservationIgnored let localAudioURL: URL
     @ObservationIgnored private var isSeeking = false
+
+    var audioFileURL: URL { localAudioURL }
 
     init(podcast: Podcast, segments: [Podcast.Segment], localAudioURL: URL, modelContext: ModelContext) {
         self.podcast = podcast
@@ -249,6 +278,14 @@ final class PodcastLearningStore {
     
     deinit {
         cleanupAudioPlayer()
+    }
+
+    func pauseForShadowingTransition() {
+        if isGlobalPlaying {
+            pauseAudio()
+            isGlobalPlaying = false
+        }
+        clearSegmentLoops()
     }
     
     func toggleGlobalPlayback() {
