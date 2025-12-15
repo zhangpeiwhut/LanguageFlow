@@ -50,11 +50,7 @@ struct HoldToRecordButton: View {
                 Text("AI 打分中...")
                     .font(.system(size: 15, weight: .semibold))
             } else {
-                Image("mic")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 18, height: 18)
-                Text("按住录音")
+                Text("按住跟读")
                     .font(.system(size: 15, weight: .semibold))
             }
         }

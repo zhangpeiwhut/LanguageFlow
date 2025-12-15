@@ -18,10 +18,7 @@ struct SecondLevelView: View {
     @State private var isPageLoading = false
     @State private var pageLoadError: String?
     @State private var areTranslationsHidden = true
-    @State private var showSubscriptionBanner = false
-    @State private var toastMessage: String?
     @State private var navigateToPodcastId: String?
-    @State private var shakingPodcastAmounts: [String: CGFloat] = [:]
     @Environment(AuthManager.self) private var authManager
 
     var body: some View {
@@ -56,19 +53,17 @@ struct SecondLevelView: View {
                                                 showTranslation: !areTranslationsHidden,
                                                 durationText: formatDurationMinutes(podcast.duration),
                                                 segmentText: formatSegmentCount(podcast.segmentCount),
-                                                shakeAmount: shakingPodcastAmounts[podcast.id] ?? 0
+                                                onTap: {
+                                                    handlePodcastTap(podcast)
+                                                }
                                             )
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                handlePodcastTap(podcast)
-                                            }
                                         }
                                     }
                                     .padding(.horizontal, 16)
-                                    .padding(.bottom, (!authManager.isVIP) ? 100 : 16)
+                                    .padding(.bottom, (!authManager.isVIP) ? 140 : 40)
                                 }
+                                .ignoresSafeArea(.container, edges: .bottom)
 
-                                // 底部订阅横幅（非VIP用户常驻显示）
                                 if !authManager.isVIP {
                                     subscriptionBanner
                                 }
@@ -76,7 +71,6 @@ struct SecondLevelView: View {
                         }
                     }
                 }
-                .padding(.bottom, 32)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
         }
@@ -85,15 +79,6 @@ struct SecondLevelView: View {
         .toolbar(.hidden, for: .tabBar)
         .navigationDestination(item: $navigateToPodcastId) { podcastId in
             PodcastLearningView(podcastId: podcastId)
-        }
-        .overlay(alignment: .top) {
-            // Toast 提示
-            if let message = toastMessage {
-                ToastView(message: message)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(999)
-            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -116,121 +101,40 @@ struct SecondLevelView: View {
 
 private extension SecondLevelView {
     func handlePodcastTap(_ podcast: PodcastSummary) {
-        // 免费内容或VIP用户：直接导航
         if podcast.isFree || authManager.isVIP {
             navigateToPodcastId = podcast.id
-        } else {
-            // 付费内容且非VIP：显示提示并摇晃
-            shakePodcast(podcast.id)
-            showToast("订阅 Pro 解锁完整内容")
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showSubscriptionBanner = true
-            }
-        }
-    }
-    
-    func shakePodcast(_ podcastId: String) {
-        withAnimation(.linear(duration: 0.5).repeatCount(6, autoreverses: false)) {
-            shakingPodcastAmounts[podcastId] = 6.0
-        }
-        Task {
-            try? await Task.sleep(nanoseconds: 600_000_000) // 0.6秒
-            withAnimation {
-                shakingPodcastAmounts.removeValue(forKey: podcastId)
-            }
-        }
-    }
-
-    func showToast(_ message: String) {
-        toastMessage = message
-        Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3秒
-            withAnimation {
-                toastMessage = nil
-            }
         }
     }
 
     var subscriptionBanner: some View {
         NavigationLink(destination: SubscriptionView()) {
-            HStack(spacing: 16) {
-                // 图标容器
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.3), Color.white.opacity(0.1)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                    
-                    Image(systemName: "crown.fill")
-                        .font(.title3)
-                        .foregroundColor(.white)
-                        .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("解锁所有播客内容")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                    
-                    Text("订阅 Pro 畅听无限")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.85))
-                }
-                
+            HStack(spacing: 12) {
+                Image("king")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 32, height: 32)
+
+                Text("解锁 VIP 畅听无限")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+
                 Spacer()
-                
-                // 箭头图标
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.white.opacity(0.9))
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(
-                ZStack {
-                    // 渐变背景
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.2, green: 0.4, blue: 1.0),
-                            Color(red: 0.4, green: 0.2, blue: 0.9)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    
-                    // 装饰性光效
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.2),
-                            Color.clear,
-                            Color.white.opacity(0.1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-            )
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.3), Color.clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color(red: 0.2, green: 0.4, blue: 1.0).opacity(0.4), radius: 12, x: 0, y: 6)
-            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
             .padding(.horizontal, 16)
-            .padding(.bottom, 20)
+            .padding(.vertical, 12)
+            .background(Color.white)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
         .buttonStyle(.plain)
     }
@@ -276,9 +180,7 @@ private extension SecondLevelView {
                 limit: pageLimit
             )
 
-            // 检查是否还在当前页面，防止竞态条件
             guard currentPage == targetPage else {
-                // 用户已经切换到其他页面了，只缓存数据，不更新UI
                 pageCache[targetPage] = response.podcasts
                 return
             }
@@ -296,7 +198,6 @@ private extension SecondLevelView {
                 pageLoadError = nil
             }
         } catch {
-            // 同样检查是否还在当前页面
             guard currentPage == targetPage else {
                 return
             }
@@ -354,64 +255,15 @@ private extension SecondLevelView {
     }
 }
 
-// MARK: - Toast View
-struct ToastView: View {
-    let message: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white.opacity(0.9))
-            
-            Text(message)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(
-            Capsule()
-                .fill(
-                    .ultraThinMaterial
-                )
-                .overlay(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.accentColor.opacity(0.9),
-                                    Color.accentColor.opacity(0.7)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                )
-        )
-        .overlay(
-            Capsule()
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.3), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 4)
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
-    }
-}
-
 // MARK: - Podcast Card
 struct PodcastCardView: View {
     let podcast: PodcastSummary
     let showTranslation: Bool
     let durationText: String
     let segmentText: String
-    let shakeAmount: CGFloat
+    let onTap: () -> Void
+
+    @State private var shakeTrigger = 0
     @Environment(AuthManager.self) private var authManager
 
     private var originalTitle: String {
@@ -455,12 +307,25 @@ struct PodcastCardView: View {
 
                     Spacer()
 
-                    // 锁图标（非VIP用户看到付费内容）
                     if !podcast.isFree && !authManager.isVIP {
                         Image(systemName: "lock.fill")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                            .modifier(ShakeEffect(animatableData: shakeAmount))
+                            .keyframeAnimator(
+                                initialValue: ShakeValues(),
+                                trigger: shakeTrigger,
+                                content: { view, values in
+                                    view
+                                        .rotationEffect(values.angle, anchor: .top)
+                                }, keyframes: { _ in
+                                    KeyframeTrack(\.angle) {
+                                        LinearKeyframe(.zero, duration: 0)
+                                        LinearKeyframe(.degrees(15), duration: 0.1)
+                                        LinearKeyframe(.degrees(-15), duration: 0.2)
+                                        LinearKeyframe(.zero, duration: 0.1)
+                                    }
+                                }
+                            )
                     }
                 }
 
@@ -469,9 +334,8 @@ struct PodcastCardView: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
 
-                    // 免费试听标签
                     if podcast.isFree {
-                        Text("免费试听")
+                        Text("免费试学")
                             .font(.caption2)
                             .fontWeight(.medium)
                             .foregroundColor(.green)
@@ -495,15 +359,22 @@ struct PodcastCardView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.gray.opacity(0.15), lineWidth: 1)
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handleTap()
+        }
+    }
+    
+    private func handleTap() {
+        if podcast.isFree || authManager.isVIP {
+            onTap()
+        } else {
+            shakeTrigger += 1
+        }
     }
 }
 
-// MARK: - Shake Effect
-struct ShakeEffect: GeometryEffect {
-    var animatableData: CGFloat
-    
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        let offset = sin(animatableData * .pi * 2) * 8
-        return ProjectionTransform(CGAffineTransform(translationX: offset, y: 0))
-    }
+// MARK: - Shake Animation Values
+struct ShakeValues {
+    var angle: Angle = .zero
 }

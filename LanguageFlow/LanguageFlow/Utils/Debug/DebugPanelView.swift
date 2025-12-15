@@ -11,6 +11,7 @@ import SwiftUI
 struct DebugPanelView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedEnvironment = DebugConfig.environment
+    @AppStorage(DebugConfig.recitingDebugEnabledKey) private var recitingDebugEnabled: Bool = DebugConfig.recitingDebugEnabled
 
     let onDismiss: () -> Void
 
@@ -30,6 +31,10 @@ struct DebugPanelView: View {
                             .tag(env)
                         }
                     }
+                }
+
+                Section("背诵") {
+                    Toggle("Reciting Debug", isOn: $recitingDebugEnabled)
                 }
             }
             .navigationTitle("Debug 配置")

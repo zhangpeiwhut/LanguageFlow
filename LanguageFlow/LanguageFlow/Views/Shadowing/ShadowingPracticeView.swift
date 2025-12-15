@@ -60,9 +60,30 @@ struct ShadowingPracticeView: View {
             store.stopComparePlayback()
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Step 2 · 跟读")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            bottomBar
+        }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                NavigationLink {
+                    RecitingPracticeView(
+                        podcast: podcast,
+                        segments: segments,
+                        localAudioURL: localAudioURL
+                    )
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Step 2 · 跟读")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     store.toggleTranslationVisibility()
@@ -90,6 +111,87 @@ struct ShadowingPracticeView: View {
             store.cleanup()
         }
     }
+    
+    private var bottomBar: some View {
+        VStack(spacing: 12) {
+            // 控制按钮
+            HStack(spacing: 12) {
+                // 上一句按钮 (3份)
+                Button {
+                    store.goToPrevious()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("上一句")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundStyle(store.currentSegmentIndex > 0 ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(store.currentSegmentIndex == 0)
+                .frame(width: UIScreen.main.bounds.width * 0.3 - 24)
+                
+                // 按住录音按钮 (4份)
+                HoldToRecordButton(
+                    isRecording: store.isRecording,
+                    isScoring: store.isScoring || (store.segmentStates[store.segments[store.currentSegmentIndex].id]?.isScoring ?? false),
+                    onStart: {
+                        Task {
+                            await store.startRecording()
+                        }
+                    },
+                    onEnd: {
+                        store.stopRecording()
+                    }
+                )
+                .frame(maxWidth: .infinity)
+                
+                // 下一句按钮 (3份)
+                Button {
+                    store.goToNext()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("下一句")
+                            .font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundStyle(store.currentSegmentIndex < store.segments.count - 1 ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(store.currentSegmentIndex >= store.segments.count - 1)
+                .frame(width: UIScreen.main.bounds.width * 0.3 - 24)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
 }
 
 private struct ShadowingPage: View {
@@ -110,8 +212,6 @@ private struct ShadowingPage: View {
                 if let last = state.lastScore {
                     scoreArea(lastScore: last)
                 }
-
-                actionButtons
 
                 Spacer(minLength: 20)
             }
@@ -150,44 +250,54 @@ private struct ShadowingPage: View {
                     .animation(.easeInOut(duration: 0.2), value: store.areTranslationsHidden)
             }
 
-            Divider()
-
             HStack(spacing: 12) {
-                IconButton(
-                    systemImageName: store.isPlayingOriginal && state.isPlaying ? "pause.fill" : "play.fill",
-                    isEnabled: true,
-                    action: {
-                        store.togglePlayCurrent()
+                Button {
+                    store.togglePlayCurrent()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: store.isPlayingOriginal && state.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(store.isPlayingOriginal && state.isPlaying ? "暂停" : "播放")
+                            .font(.system(size: 16, weight: .semibold))
                     }
-                )
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
-                IconButton(
-                    systemImageName: "stop.fill",
-                    isEnabled: true,
-                    action: {
-                        store.stopPlayback()
+                Button {
+                    store.stopPlayback()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("停止")
+                            .font(.system(size: 16, weight: .semibold))
                     }
-                )
-            }
-
-            VStack(spacing: 8) {
-                HoldToRecordButton(
-                    isRecording: store.isRecording,
-                    isScoring: store.isScoring || state.isScoring,
-                    onStart: {
-                        Task {
-                            await store.startRecording()
-                        }
-                    },
-                    onEnd: {
-                        store.stopRecording()
-                    }
-                )
-
-                Text("长按按钮开始录音，松开结束并自动打分")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(20)
@@ -199,23 +309,51 @@ private struct ShadowingPage: View {
 
     private func scoreArea(lastScore: Float) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("练习成绩")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+            HStack {
+                Text("练习成绩")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 3) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Text("在安静的环境使用耳机得分会更高喔")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             HStack(spacing: 12) {
                 ScoreBadge(title: "本次", score: lastScore, color: scoreColor(for: lastScore))
             }
 
             if state.recordingURL != nil {
-                ActionButton(
-                    imageName: "compare",
-                    text: store.isComparing && store.comparingSegmentID == segment.id ? "停止对比" : "原音 + 录音",
-                    isEnabled: !store.isRecording && !store.isScoring && !state.isScoring,
-                    action: {
-                        store.toggleComparePlayback(at: index)
+                Button {
+                    store.toggleComparePlayback(at: index)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform.badge.mic")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(store.isComparing && store.comparingSegmentID == segment.id ? "停止对比" : "原音 + 录音")
+                            .font(.system(size: 16, weight: .semibold))
                     }
-                )
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(store.isRecording || store.isScoring || state.isScoring)
             }
 
             if let comparison = state.waveformComparison {
@@ -236,28 +374,6 @@ private struct ShadowingPage: View {
         case 80..<90: return .blue
         case 70..<80: return .orange
         default: return .red
-        }
-    }
-
-    private var actionButtons: some View {
-        HStack(spacing: 12) {
-            ActionButton(
-                imageName: "left_run",
-                text: "上一句",
-                isEnabled: index > 0,
-                action: {
-                    store.goToPrevious()
-                }
-            )
-            
-            ActionButton(
-                imageName: "right_run",
-                text: "下一句",
-                isEnabled: index < total - 1,
-                action: {
-                    store.goToNext()
-                }
-            )
         }
     }
 }

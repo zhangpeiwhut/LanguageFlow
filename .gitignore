@@ -25,3 +25,7 @@ local/translator/__pycache__
 __pycache__
 /LanguageFlow/Pods
 /.derivedData
+/LanguageFlow/build
+/DerivedDataDevice
+/DerivedDataCI
+/DerivedData

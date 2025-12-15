@@ -22,7 +22,7 @@ extension DebugConfig {
             case .production:
                 return CommonConstants.baseURL
             case .development:
-                return "http://192.168.0.244:8001/podcast"
+                return "http://10.1.28.249:8001/podcast"
             }
         }
 
@@ -55,6 +55,27 @@ extension DebugConfig {
             UserDefaults.standard.set(environment.rawValue, forKey: environmentStorageKey)
         } else {
             UserDefaults.standard.removeObject(forKey: environmentStorageKey)
+        }
+    }
+}
+
+// MARK: - Reciting
+nonisolated
+extension DebugConfig {
+    static let recitingDebugEnabledKey = "debug_config_reciting_debug_enabled"
+
+    static var recitingDebugEnabled: Bool {
+        if UserDefaults.standard.object(forKey: recitingDebugEnabledKey) != nil {
+            return UserDefaults.standard.bool(forKey: recitingDebugEnabledKey)
+        }
+        return true
+    }
+
+    static func setRecitingDebugEnabled(_ enabled: Bool?) {
+        if let enabled {
+            UserDefaults.standard.set(enabled, forKey: recitingDebugEnabledKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: recitingDebugEnabledKey)
         }
     }
 }

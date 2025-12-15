@@ -56,28 +56,6 @@ struct PodcastLearningView: View {
                                 SegmentListView(store: store) { word in
                                     lookupWord = LookupWord(word: word)
                                 }
-
-                                NavigationLink {
-                                    ShadowingPracticeView(
-                                        podcast: store.podcast,
-                                        segments: store.segments,
-                                        localAudioURL: store.audioFileURL,
-                                        modelContext: modelContext,
-                                        startSegmentID: nil
-                                    )
-                                } label: {
-                                    HStack {
-                                        Spacer()
-                                        Text("Step 2 · 跟读")
-                                            .font(.headline)
-                                        Image(systemName: "arrow.right")
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 16)
-                                    .background(Color.accentColor)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(12)
-                                }
                             }
                             .padding(.top, 8)
                             .padding(.horizontal, 16)
@@ -132,10 +110,37 @@ struct PodcastLearningView: View {
             hasLoaded = true
             loadPodcast()
         }
+        .onDisappear {
+            if let store {
+                store.pauseForShadowingTransition()
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
-        .navigationTitle("Step 1 · 精听")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                if let store = store {
+                    NavigationLink {
+                        ShadowingPracticeView(
+                            podcast: store.podcast,
+                            segments: store.segments,
+                            localAudioURL: store.audioFileURL,
+                            modelContext: modelContext,
+                            startSegmentID: nil
+                        )
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Step 1 · 精听")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                }
+            }
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 if let store {
                     Button {
