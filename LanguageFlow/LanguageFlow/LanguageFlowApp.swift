@@ -52,6 +52,6 @@ struct LanguageFlowApp: App {
                 }
                 #endif
         }
-        .modelContainer(for: [FavoritePodcast.self, FavoriteSegment.self])
+        .modelContainer(for: [FavoritePodcast.self, FavoriteSegment.self, CompletedPodcast.self])
     }
 }
