@@ -32,6 +32,9 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
     private var resultCounter: Int = 0
     private var didLogFirstAudioBuffer: Bool = false
     private var shouldLogFirstAudioBuffer: Bool = false
+    private var firstTapUptime: TimeInterval?
+    private var didLogFirstResultLatency: Bool = false
+    private var didCaptureFirstTapUptime: Bool = false
 
     init(locale: Locale) {
         self.locale = locale
@@ -51,7 +54,7 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
         let transcriber = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
+            reportingOptions: [.volatileResults, .fastResults],
             attributeOptions: []
         )
         self.transcriber = transcriber
@@ -75,7 +78,8 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
         let statusAfter = await AssetInventory.status(forModules: [transcriber])
         RecitingDebug.log("SpeechAnalyzer asset status(after): \(statusAfter)")
 
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let options = SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .processLifetime)
+        let analyzer = SpeechAnalyzer(modules: [transcriber], options: options)
         self.analyzer = analyzer
 
         analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
@@ -87,6 +91,10 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
             throw SpeechAnalyzerError.invalidAnalyzerAudioFormat
         }
 
+        RecitingDebug.log("SpeechAnalyzer prepareToAnalyze start")
+        try await analyzer.prepareToAnalyze(in: analyzerFormat)
+        RecitingDebug.log("SpeechAnalyzer prepareToAnalyze done")
+
         let stream = AsyncStream<AnalyzerInput> { continuation in
             self.inputContinuation = continuation
         }
@@ -96,6 +104,11 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
         resultCounter = 0
         didLogFirstAudioBuffer = false
         shouldLogFirstAudioBuffer = RecitingDebug.enabled
+        stateQueue.sync {
+            firstTapUptime = nil
+            didLogFirstResultLatency = false
+        }
+        didCaptureFirstTapUptime = false
         silenceCommitWorkItem?.cancel()
         silenceCommitWorkItem = nil
         lastPartial = ""
@@ -104,9 +117,10 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
             guard let self else { return }
             do {
                 for try await result in transcriber.results {
+                    let receivedAt = ProcessInfo.processInfo.systemUptime
                     let text = String(result.text.characters)
                     self.stateQueue.async { [weak self] in
-                        self?._handle(text: text, isFinal: result.isFinal)
+                        self?._handle(text: text, isFinal: result.isFinal, receivedAt: receivedAt)
                     }
                 }
             } catch {
@@ -135,6 +149,9 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
             didLogFirstAudioBuffer = false
             shouldLogFirstAudioBuffer = false
             lastPartial = ""
+            firstTapUptime = nil
+            didLogFirstResultLatency = false
+            didCaptureFirstTapUptime = false
         }
 
         if audioEngine.isRunning {
@@ -180,6 +197,13 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: tapFormat) { [weak self] buffer, _ in
             guard let self else { return }
+            if !self.didCaptureFirstTapUptime {
+                self.didCaptureFirstTapUptime = true
+                let now = ProcessInfo.processInfo.systemUptime
+                self.stateQueue.async { [weak self] in
+                    self?.firstTapUptime = now
+                }
+            }
             do {
                 if self.shouldLogFirstAudioBuffer, !self.didLogFirstAudioBuffer {
                     self.didLogFirstAudioBuffer = true
@@ -194,7 +218,19 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
         }
     }
 
-    private func _handle(text: String, isFinal: Bool) {
+    private func _handle(text: String, isFinal: Bool, receivedAt: TimeInterval) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let queueDelay = now - receivedAt
+        if queueDelay > 0.08 {
+            RecitingDebug.log(String(format: "SpeechAnalyzer stateQueue delay=%.0fms", queueDelay * 1000))
+        }
+        if !didLogFirstResultLatency {
+            didLogFirstResultLatency = true
+            if let firstTapUptime {
+                RecitingDebug.log(String(format: "SpeechAnalyzer first result latency=%.3fs", now - firstTapUptime))
+            }
+        }
+
         if text != lastPartial {
             lastPartial = text
             onPartialText?(text)

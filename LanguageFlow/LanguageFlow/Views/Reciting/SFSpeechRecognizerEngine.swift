@@ -27,6 +27,9 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
     private var didLogFirstAudioBuffer: Bool = false
     private var shouldLogFirstAudioBuffer: Bool = false
     private var resultCounter: Int = 0
+    private var firstTapUptime: TimeInterval?
+    private var didLogFirstResultLatency: Bool = false
+    private var didCaptureFirstTapUptime: Bool = false
 
     init(locale: Locale) {
         self.locale = locale
@@ -45,7 +48,22 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
         }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .spokenAudio, options: [.duckOthers, .allowBluetooth])
+        try session.setCategory(.record, mode: .measurement, options: [.duckOthers, .allowBluetooth])
+        do {
+            try session.setPreferredSampleRate(16_000)
+        } catch {
+            RecitingDebug.log("SFSpeech preferred sample rate failed: \(RecitingDebug.describe(error))")
+        }
+        do {
+            try session.setPreferredInputNumberOfChannels(1)
+        } catch {
+            RecitingDebug.log("SFSpeech preferred input channels failed: \(RecitingDebug.describe(error))")
+        }
+        do {
+            try session.setPreferredIOBufferDuration(0.01)
+        } catch {
+            RecitingDebug.log("SFSpeech preferred IO buffer duration failed: \(RecitingDebug.describe(error))")
+        }
         try session.setActive(true, options: .notifyOthersOnDeactivation)
         RecitingDebug.log("SFSpeech audio session: \(RecitingDebug.audioSessionSummary(session))")
         if !session.isInputAvailable || session.inputNumberOfChannels <= 0 {
@@ -64,6 +82,11 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
         didLogFirstAudioBuffer = false
         shouldLogFirstAudioBuffer = RecitingDebug.enabled
         resultCounter = 0
+        stateQueue.sync {
+            firstTapUptime = nil
+            didLogFirstResultLatency = false
+        }
+        didCaptureFirstTapUptime = false
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
@@ -74,8 +97,9 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
                 return
             }
             guard let result else { return }
+            let receivedAt = ProcessInfo.processInfo.systemUptime
             self.stateQueue.async { [weak self] in
-                self?._handle(result: result)
+                self?._handle(result: result, receivedAt: receivedAt)
             }
         }
 
@@ -86,11 +110,19 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
         }
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
-            if let self, self.shouldLogFirstAudioBuffer, !self.didLogFirstAudioBuffer {
+            guard let self else { return }
+            if !self.didCaptureFirstTapUptime {
+                self.didCaptureFirstTapUptime = true
+                let now = ProcessInfo.processInfo.systemUptime
+                self.stateQueue.async { [weak self] in
+                    self?.firstTapUptime = now
+                }
+            }
+            if self.shouldLogFirstAudioBuffer, !self.didLogFirstAudioBuffer {
                 self.didLogFirstAudioBuffer = true
                 RecitingDebug.log("SFSpeech first tap buffer: frames=\(buffer.frameLength) format=\(RecitingDebug.audioFormatSummary(buffer.format))")
             }
-            self?.recognitionRequest?.append(buffer)
+            self.recognitionRequest?.append(buffer)
         }
 
         audioEngine.prepare()
@@ -110,7 +142,10 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
             didLogFirstAudioBuffer = false
             shouldLogFirstAudioBuffer = false
             resultCounter = 0
+            firstTapUptime = nil
+            didLogFirstResultLatency = false
         }
+        didCaptureFirstTapUptime = false
 
         if audioEngine.isRunning {
             audioEngine.stop()
@@ -126,7 +161,19 @@ final class SFSpeechRecognizerEngine: NSObject, LiveSpeechRecognizerEngine {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    private func _handle(result: SFSpeechRecognitionResult) {
+    private func _handle(result: SFSpeechRecognitionResult, receivedAt: TimeInterval) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let queueDelay = now - receivedAt
+        if queueDelay > 0.08 {
+            RecitingDebug.log(String(format: "SFSpeech stateQueue delay=%.0fms", queueDelay * 1000))
+        }
+        if !didLogFirstResultLatency {
+            didLogFirstResultLatency = true
+            if let firstTapUptime {
+                RecitingDebug.log(String(format: "SFSpeech first result latency=%.3fs", now - firstTapUptime))
+            }
+        }
+
         let partial = result.bestTranscription.formattedString
         if partial != lastPartial {
             lastPartial = partial

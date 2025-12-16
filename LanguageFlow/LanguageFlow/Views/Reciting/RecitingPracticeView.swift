@@ -493,6 +493,7 @@ final class RecitingStore {
         defer { isStarting = false }
 
         do {
+            RecitingDebug.resetClock()
             RecitingDebug.log("startReciting: segments=\(segments.count) tokens=\(tokens.count) words=\(wordTokenTotal)")
 
             let micGranted = await Permissions.requestMicrophone()
@@ -531,28 +532,40 @@ final class RecitingStore {
             engineName = engine.displayName
             recognizerEngine = engine
 
-            let bindCallbacks: (any LiveSpeechRecognizerEngine) -> Void = { [weak self] engine in
-                engine.onWords = { [weak self] words in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        self.lastCommittedWordsText = words.joined(separator: " ")
-                        self.lastRecognitionEventAt = Date()
-                        self.appendRecentRecognizedWords(words)
-                        self.recentPartialWords = []
-                        RecitingDebug.log("onWords: \(words)")
-                        self.consumeRecognizedWords(words)
-                    }
-                }
-                engine.onPartialText = { [weak self] text in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        if RecitingDebug.enabled {
-                            self.lastPartialText = RecitingDebug.truncate(text, limit: 120)
-                            self.lastRecognitionEventAt = Date()
-                        }
-                        self.updateRecentPartialWords(from: text)
-                    }
-                }
+	            let bindCallbacks: (any LiveSpeechRecognizerEngine) -> Void = { [weak self] engine in
+	                engine.onWords = { [weak self] words in
+	                    let callbackAt = ProcessInfo.processInfo.systemUptime
+	                    Task { @MainActor [weak self] in
+	                        guard let self else { return }
+	                        if RecitingDebug.enabled {
+	                            let delay = ProcessInfo.processInfo.systemUptime - callbackAt
+	                            if delay > 0.08 {
+	                                RecitingDebug.log(String(format: "main delay onWords=%.0fms", delay * 1000))
+	                            }
+	                        }
+	                        self.lastCommittedWordsText = words.joined(separator: " ")
+	                        self.lastRecognitionEventAt = Date()
+	                        self.appendRecentRecognizedWords(words)
+	                        self.recentPartialWords = []
+	                        RecitingDebug.log("onWords: \(words)")
+	                        self.consumeRecognizedWords(words)
+	                    }
+	                }
+	                engine.onPartialText = { [weak self] text in
+	                    let callbackAt = ProcessInfo.processInfo.systemUptime
+	                    Task { @MainActor [weak self] in
+	                        guard let self else { return }
+	                        if RecitingDebug.enabled {
+	                            let delay = ProcessInfo.processInfo.systemUptime - callbackAt
+	                            if delay > 0.08 {
+	                                RecitingDebug.log(String(format: "main delay onPartial=%.0fms", delay * 1000))
+	                            }
+	                            self.lastPartialText = RecitingDebug.truncate(text, limit: 120)
+	                            self.lastRecognitionEventAt = Date()
+	                        }
+	                        self.updateRecentPartialWords(from: text)
+	                    }
+	                }
                 engine.onError = { [weak self] error in
                     Task { @MainActor [weak self] in
                         guard let self else { return }

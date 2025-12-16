@@ -67,7 +67,8 @@ enum RecitingAudioTap {
 
 nonisolated
 enum RecitingDebug {
-    private static let uptimeBase: TimeInterval = ProcessInfo.processInfo.systemUptime
+    private static let lock = NSLock()
+    private static var sessionUptimeBase: TimeInterval?
 
     static var enabled: Bool {
         #if DEBUG
@@ -77,9 +78,26 @@ enum RecitingDebug {
         #endif
     }
 
+    static func resetClock() {
+        guard enabled else { return }
+        lock.lock()
+        sessionUptimeBase = ProcessInfo.processInfo.systemUptime
+        lock.unlock()
+    }
+
     static func log(_ message: @autoclosure () -> String) {
         guard enabled else { return }
-        let elapsed = ProcessInfo.processInfo.systemUptime - uptimeBase
+        let now = ProcessInfo.processInfo.systemUptime
+        let base: TimeInterval = {
+            lock.lock()
+            defer { lock.unlock() }
+            if let sessionUptimeBase {
+                return sessionUptimeBase
+            }
+            sessionUptimeBase = now
+            return now
+        }()
+        let elapsed = now - base
         print(String(format: "[Reciting +%.3fs] %@", elapsed, message()))
     }
 
