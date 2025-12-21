@@ -83,12 +83,29 @@ class AuthDatabase:
             )
         """)
 
+        # App Store 通知日志表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notification_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notification_uuid TEXT UNIQUE NOT NULL,
+                notification_type TEXT,
+                subtype TEXT,
+                original_transaction_id TEXT,
+                transaction_id TEXT,
+                environment TEXT,
+                signed_payload TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # 创建索引
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_uuid ON users(device_uuid)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_trans_id ON users(original_transaction_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_trans_id ON purchase_records(original_transaction_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_trans_id ON device_bindings(original_transaction_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_active ON device_bindings(last_active_time)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notification_uuid ON notification_logs(notification_uuid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notification_trans_id ON notification_logs(original_transaction_id)")
 
         conn.commit()
         conn.close()
@@ -136,6 +153,23 @@ class AuthDatabase:
         conn.commit()
         conn.close()
 
+    def update_users_vip_status_by_original_transaction_id(
+        self,
+        original_transaction_id: str,
+        is_vip: bool,
+        vip_expire_time: Optional[datetime] = None,
+    ):
+        """按 original_transaction_id 批量更新用户VIP状态"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users
+            SET is_vip = ?, vip_expire_time = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE original_transaction_id = ?
+        """, (1 if is_vip else 0, _to_timestamp_ms(vip_expire_time), original_transaction_id))
+        conn.commit()
+        conn.close()
+
     # 付费凭证相关操作
     def get_purchase_record(self, original_transaction_id: str) -> Optional[Dict[str, Any]]:
         """获取付费凭证"""
@@ -154,16 +188,24 @@ class AuthDatabase:
 
     def create_purchase_record(self, original_transaction_id: str, product_id: str,
                                purchase_date: datetime, expire_date: Optional[datetime] = None,
-                               environment: str = 'production', event_type: str = 'purchase'):
+                               environment: str = 'production', status: str = 'active',
+                               event_type: str = 'purchase'):
         """创建付费凭证记录（支持空过期时间）"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO purchase_records
-            (original_transaction_id, product_id, purchase_date, expire_date, environment, device_count)
-            VALUES (?, ?, ?, ?, ?, 0)
-        """, (original_transaction_id, product_id, _to_timestamp_ms(purchase_date), _to_timestamp_ms(expire_date), environment))
+            (original_transaction_id, product_id, purchase_date, expire_date, status, environment, device_count)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
+        """, (
+            original_transaction_id,
+            product_id,
+            _to_timestamp_ms(purchase_date),
+            _to_timestamp_ms(expire_date),
+            status,
+            environment
+        ))
         conn.commit()
         conn.close()
 
@@ -183,6 +225,36 @@ class AuthDatabase:
     def update_purchase_record_expiry(self, original_transaction_id: str, expire_date: Optional[datetime]):
         """更新付费凭证过期时间（续费场景的别名方法）"""
         self.update_purchase_record(original_transaction_id, expire_date)
+
+    def update_purchase_record_status(
+        self,
+        original_transaction_id: str,
+        status: str,
+        expire_date: Optional[datetime] = None,
+        environment: Optional[str] = None,
+    ):
+        """更新付费凭证状态（可选更新过期时间与环境）"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        updates = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+        params: List[Any] = [status]
+
+        if expire_date is not None:
+            updates.append("expire_date = ?")
+            params.append(_to_timestamp_ms(expire_date))
+
+        if environment is not None:
+            updates.append("environment = ?")
+            params.append(environment)
+
+        params.append(original_transaction_id)
+        cursor.execute(
+            f"UPDATE purchase_records SET {', '.join(updates)} WHERE original_transaction_id = ?",
+            params,
+        )
+        conn.commit()
+        conn.close()
 
     def update_device_count(self, original_transaction_id: str, count: int):
         """更新设备数量"""
@@ -290,3 +362,50 @@ class AuthDatabase:
             device_uuid=device_uuid,
             jws_token=jws_token
         )
+
+    def get_notification_log(self, notification_uuid: str) -> Optional[Dict[str, Any]]:
+        """获取通知日志"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM notification_logs WHERE notification_uuid = ?
+        """, (notification_uuid,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_notification_log(
+        self,
+        notification_uuid: str,
+        notification_type: Optional[str],
+        subtype: Optional[str],
+        original_transaction_id: Optional[str],
+        transaction_id: Optional[str],
+        environment: Optional[str],
+        signed_payload: str,
+    ) -> bool:
+        """写入通知日志（幂等），成功返回 True，重复返回 False"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO notification_logs
+                (notification_uuid, notification_type, subtype, original_transaction_id,
+                 transaction_id, environment, signed_payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                notification_uuid,
+                notification_type,
+                subtype,
+                original_transaction_id,
+                transaction_id,
+                environment,
+                signed_payload
+            ))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        finally:
+            conn.close()

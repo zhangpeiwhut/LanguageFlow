@@ -8,6 +8,10 @@ class VerifyPurchaseRequest(BaseModel):
     event_type: str = Field(..., pattern="^(purchase|restore|renew)$")
 
 
+class AppStoreNotificationRequest(BaseModel):
+    signedPayload: str = Field(..., min_length=1)
+
+
 class VerifyPurchaseResponse(BaseModel):
     is_vip: bool
     vip_expire_time: Optional[int] = None  # 毫秒级时间戳

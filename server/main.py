@@ -10,9 +10,14 @@ from .database import PodcastDatabase
 from .cos_service import COSService
 from .models.auth_models import AuthDatabase
 from .api.auth_api import register_or_login_handler
-from .api.payment_api import verify_purchase_handler, get_devices_handler, unbind_device_handler
+from .api.payment_api import (
+    verify_purchase_handler,
+    get_devices_handler,
+    unbind_device_handler,
+    app_store_notification_handler,
+)
 from .schemas.auth import RegisterRequest
-from .schemas.payment import VerifyPurchaseRequest
+from .schemas.payment import VerifyPurchaseRequest, AppStoreNotificationRequest
 from .dependencies.auth import get_current_device_uuid
 
 app = FastAPI(
@@ -503,6 +508,27 @@ async def verify_purchase(
     except Exception as error:
         payment_logger.exception('[server] 验证购买失败 device_uuid=%s', device_uuid)
         raise HTTPException(status_code=500, detail=f'验证失败: {str(error)}')
+
+
+@payment_router.post('/notifications')
+async def app_store_notifications(
+    request: AppStoreNotificationRequest
+):
+    """App Store Server Notifications v2"""
+    try:
+        payment_logger.info("收到 App Store 通知")
+        result = app_store_notification_handler(request, auth_db)
+        payment_logger.info(
+            "App Store 通知处理完成 type=%s vip=%s",
+            result.get("data", {}).get("notification_type"),
+            result.get("data", {}).get("is_vip"),
+        )
+        return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        payment_logger.exception('[server] App Store 通知处理失败')
+        raise HTTPException(status_code=500, detail=f'通知处理失败: {str(error)}')
 
 
 @user_router.get('/devices')
