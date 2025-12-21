@@ -21,8 +21,8 @@ struct CommonButton: View {
 
     init(
         title: String,
-        topColor: Color = .main,
-        bottomColor: Color = .main,
+        topColor: Color = .accentColor,
+        bottomColor: Color = .accentColor,
         textColor: Color = .white,
         textFont: Font = .system(size: 18, weight: .semibold, design: .rounded),
         borderColor: Color? = nil,

@@ -73,14 +73,14 @@ actor ShadowingScoringEngine {
             throw NSError(
                 domain: "ShadowingScoringEngine",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "没有录到清晰的人声，请再试一次（建议佩戴耳机以避免录入原音）"]
+                userInfo: [NSLocalizedDescriptionKey: "没有录到清晰的人声，请再试一次"]
             )
         }
         guard userTrimmed.count >= minSamples else {
             throw NSError(
                 domain: "ShadowingScoringEngine",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "录音太短，请长按录音再试一次"]
+                userInfo: [NSLocalizedDescriptionKey: "录音时间太短，请再试一次"]
             )
         }
 

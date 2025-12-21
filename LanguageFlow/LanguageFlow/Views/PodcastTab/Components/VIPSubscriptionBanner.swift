@@ -46,20 +46,7 @@ struct VIPSubscriptionBanner: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
             }
-            .background(
-                LinearGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: Color.hex("D8CDED"), location: 0),
-                        .init(color: Color.hex("F1EDFA"), location: 0.3),
-                        .init(color: Color.hex("F8F6FC"), location: 0.6),
-                        .init(color: Color.hex("FFFFFF"), location: 1)
-                    ]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 4)
+            .glassEffect()
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)

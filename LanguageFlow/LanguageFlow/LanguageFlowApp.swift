@@ -11,18 +11,22 @@ import SwiftData
 @main
 struct LanguageFlowApp: App {
     @State private var authManager = AuthManager.shared
+    @State private var toastManager = ToastManager.shared
     #if DEBUG
     @State private var showDebugPanel = false
     #endif
 
     init() {
+        _ = IAPManager.shared
         Task {
             do {
                 try await AuthManager.shared.syncUserStatus()
-                await IAPManager.shared.loadProducts()
             } catch {
                 print("[error] Initialization failed: \(error)")
             }
+        }
+        Task {
+            SpeechModelManager.shared.prefetchIfNeeded()
         }
 
         NotificationCenter.default.addObserver(
@@ -40,6 +44,7 @@ struct LanguageFlowApp: App {
         WindowGroup {
             ContentView()
                 .environment(authManager)
+                .toastContainer(manager: toastManager)
                 #if DEBUG
                 .overlay(
                     ShakeDetector {
@@ -52,6 +57,10 @@ struct LanguageFlowApp: App {
                 }
                 #endif
         }
-        .modelContainer(for: [FavoritePodcast.self, FavoriteSegment.self, CompletedPodcast.self])
+        .modelContainer(for: [
+            FavoritePodcast.self,
+            FavoriteSegment.self,
+            CompletedPodcast.self
+        ])
     }
 }

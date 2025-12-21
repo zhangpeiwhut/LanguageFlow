@@ -9,8 +9,7 @@ import AVFAudio
 import Speech
 
 @available(iOS 26.0, *)
-final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
-    let displayName: String = "SpeechAnalyzer"
+final class SpeechAnalyzerRecognizerEngine {
     var onWords: (@Sendable ([String]) -> Void)?
     var onPartialText: (@Sendable (String) -> Void)?
     var onError: (@Sendable (Error) -> Void)?
@@ -36,8 +35,16 @@ final class SpeechAnalyzerRecognizerEngine: LiveSpeechRecognizerEngine {
     private var didLogFirstResultLatency: Bool = false
     private var didCaptureFirstTapUptime: Bool = false
 
-    init(locale: Locale) {
+    init(
+        locale: Locale,
+        onWords: (@Sendable ([String]) -> Void)? = nil,
+        onPartialText: (@Sendable (String) -> Void)? = nil,
+        onError: (@Sendable (Error) -> Void)? = nil
+    ) {
         self.locale = locale
+        self.onWords = onWords
+        self.onPartialText = onPartialText
+        self.onError = onError
     }
 
     func start() async throws {

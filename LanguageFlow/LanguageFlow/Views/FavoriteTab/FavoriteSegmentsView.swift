@@ -10,7 +10,7 @@ import Observation
 import Combine
 
 // MARK: - 单句收藏
-struct FavoriteSegmentsView: View {
+struct FavoriteSegmentsView<EmptyView: View>: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavoriteSegment.createdAt, order: .reverse) private var favoriteSegmentsData: [FavoriteSegment]
     @State private var favoriteSegments: [FavoritePodcastSegment] = []
@@ -18,15 +18,17 @@ struct FavoriteSegmentsView: View {
     @State private var segmentPlaybackRates: [String: Double] = [:]
     @State private var segmentTranslationVisibility: [String: Bool] = [:]
     @State private var loopingSegmentID: String?
-    
+    @ViewBuilder var emptyView: EmptyView
+
     var body: some View {
         Group {
-            if !favoriteSegments.isEmpty {
+            if favoriteSegments.isEmpty {
+                emptyView
+            } else {
                 segmentList
             }
         }
-        .onAppear(perform: syncFavorites)
-        .onChange(of: favoriteSegmentsData.count) { _, _ in syncFavorites() }
+        .onChange(of: favoriteSegmentsData.count, initial: true) { _, _ in syncFavorites() }
         .onDisappear {
             segmentPlayer?.stop()
         }
@@ -227,30 +229,52 @@ private struct FavoriteSegmentControls: View {
     }
     
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
             Spacer()
-            Button(action: onToggleLoop) {
-                Image(systemName: "repeat")
-                    .font(.body)
-                    .foregroundColor(isLooping ? .accentColor : .secondary)
-            }
-            .buttonStyle(.plain)
-
+            
             Button {
                 onRateChange(nextRate())
             } label: {
-                Text("\(playbackRate, specifier: "%.2fx")")
-                    .font(.caption)
+                Text("\(playbackRate, specifier: "%.2gx")")
+                    .font(.system(size: 14, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("倍速 \(playbackRate, specifier: "%.2fx")")
+            .accessibilityLabel("倍速 \(playbackRate, specifier: "%.2gx")")
+            
+            Button(action: onToggleLoop) {
+                HStack(spacing: 4) {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 16, weight: .medium))
+
+                    if isLooping {
+                        Text("循环")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                .foregroundColor(isLooping ? .primary : .secondary)
+                .padding(.trailing, 8)
+                .padding(.vertical, 7)
+                .background {
+                    if isLooping {
+                        Capsule()
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isLooping)
+            }
+            .buttonStyle(.plain)
             
             Button(action: onUnfavorite) {
                 Image(systemName: "heart.fill")
-                    .font(.body)
-                    .foregroundColor(.pink)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.red)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
         }

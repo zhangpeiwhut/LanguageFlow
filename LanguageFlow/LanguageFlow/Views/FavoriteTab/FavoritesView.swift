@@ -30,18 +30,19 @@ struct FavoritesView: View {
                 ScrollView {
                     LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
                         Section {
-                            ZStack {
-                                EmptyStateView().frame(height: max(proxy.size.height - 100, 200))
-                                Group {
-                                    switch selectedTab {
-                                    case .podcasts:
-                                        FavoritePodcastsView(navigationPath: $navigationPath)
-                                    case .segments:
-                                        FavoriteSegmentsView()
+                            Group {
+                                switch selectedTab {
+                                case .podcasts:
+                                    FavoritePodcastsView(navigationPath: $navigationPath) {
+                                        EmptyStateView().frame(height: max(proxy.size.height - 100, 200))
+                                    }
+                                case .segments:
+                                    FavoriteSegmentsView {
+                                        EmptyStateView().frame(height: max(proxy.size.height - 100, 200))
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .top)
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         } header: {
                             pickerHeader
                         }

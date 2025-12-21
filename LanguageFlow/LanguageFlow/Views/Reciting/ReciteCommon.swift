@@ -8,14 +8,8 @@
 import Foundation
 import AVFAudio
 
-protocol LiveSpeechRecognizerEngine: AnyObject {
-    var displayName: String { get }
-    var onWords: (@Sendable ([String]) -> Void)? { get set }
-    var onPartialText: (@Sendable (String) -> Void)? { get set }
-    var onError: (@Sendable (Error) -> Void)? { get set }
-
-    func start() async throws
-    func stop() async
+extension Notification.Name {
+    static let recitingDidComplete = Notification.Name("recitingDidComplete")
 }
 
 struct RecitationToken: Equatable {

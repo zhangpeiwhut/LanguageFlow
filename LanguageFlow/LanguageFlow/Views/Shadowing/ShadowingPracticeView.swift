@@ -18,6 +18,8 @@ struct ShadowingPracticeView: View {
     let startSegmentID: Podcast.Segment.ID?
 
     @State private var store: ShadowingStore
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ToastManager.self) private var toastManager
 
     init(
         podcast: Podcast,
@@ -93,33 +95,22 @@ struct ShadowingPracticeView: View {
                 }
             }
         }
-        .alert("提示", isPresented: Binding(
-            get: { store.errorMessage != nil },
-            set: { newValue in
-                if !newValue { store.errorMessage = nil }
-            }
-        )) {
-            Button("好的", role: .cancel) {
-                store.errorMessage = nil
-            }
-        } message: {
-            if let message = store.errorMessage {
-                Text(message)
-            }
+        .onAppear {
+            store.toastManager = toastManager
         }
         .onDisappear {
             store.cleanup()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recitingDidComplete)) { _ in
+            dismiss()
         }
     }
     
     private var bottomBar: some View {
         VStack(spacing: 12) {
-            // 控制按钮
             HStack(spacing: 12) {
-                // 上一句按钮 (3份)
                 Button {
                     store.goToPrevious()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.left")
@@ -144,7 +135,6 @@ struct ShadowingPracticeView: View {
                 .disabled(store.currentSegmentIndex == 0)
                 .frame(width: UIScreen.main.bounds.width * 0.3 - 24)
                 
-                // 按住录音按钮 (4份)
                 HoldToRecordButton(
                     isRecording: store.isRecording,
                     isScoring: store.isScoring || (store.segmentStates[store.segments[store.currentSegmentIndex].id]?.isScoring ?? false),
@@ -159,10 +149,8 @@ struct ShadowingPracticeView: View {
                 )
                 .frame(maxWidth: .infinity)
                 
-                // 下一句按钮 (3份)
                 Button {
                     store.goToNext()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     HStack(spacing: 8) {
                         Text("下一句")
@@ -336,7 +324,7 @@ private struct ShadowingPage: View {
                     HStack(spacing: 8) {
                         Image(systemName: "waveform.badge.mic")
                             .font(.system(size: 16, weight: .semibold))
-                        Text(store.isComparing && store.comparingSegmentID == segment.id ? "停止对比" : "原音 + 录音")
+                        Text(store.isComparing && store.comparingSegmentID == segment.id ? "停止对比" : "原音 + 跟读")
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .foregroundStyle(.primary)
@@ -384,6 +372,7 @@ final class ShadowingStore {
     let segments: [Podcast.Segment]
     let localAudioURL: URL
     @ObservationIgnored let modelContext: ModelContext
+    @ObservationIgnored var toastManager: ToastManager?
 
     var currentSegmentIndex: Int
     var isRecording: Bool = false
@@ -394,7 +383,6 @@ final class ShadowingStore {
     var areTranslationsHidden: Bool = false
     var playbackProgress: Double = 0
     var segmentStates: [Podcast.Segment.ID: ShadowingSegmentState] = [:]
-    var errorMessage: String?
 
     var completedSegmentsCount: Int {
         segmentStates.values.filter { $0.bestScore != nil }.count
@@ -619,6 +607,18 @@ final class ShadowingStore {
         guard !isRecording else { return }
         configureSessionForPlayback(reason: "activatePlaybackSessionIfNeeded")
     }
+    
+    func showErrorToast(_ message: String) {
+        Task {
+            toastManager?.show(
+                message,
+                icon: "cry",
+                iconSource: .asset,
+                iconSize: CGSize(width: 34, height: 34),
+                duration: 1.2
+            )
+        }
+    }
 }
 
 struct ShadowingSegmentState: Equatable {
@@ -707,13 +707,13 @@ extension ShadowingStore {
             beginRecording(for: segment)
         case .denied:
             ShadowingDebug.log("record permission denied")
-            errorMessage = "麦克风权限未开启"
+            showErrorToast("麦克风权限未开启")
         case .undetermined:
             ShadowingDebug.log("record permission undetermined; requesting")
             await AVAudioApplication.requestRecordPermission()
         @unknown default:
             ShadowingDebug.log("record permission unknown; treating as denied")
-            errorMessage = "麦克风权限未开启"
+            showErrorToast("麦克风权限未开启")
         }
     }
 
@@ -740,8 +740,8 @@ extension ShadowingStore {
             preferNonBluetoothMicIfAvailable(session: session)
             ShadowingDebug.log("audio session record ok: category=\(session.category.rawValue) mode=\(session.mode.rawValue) outputVolume=\(session.outputVolume)")
         } catch {
-            errorMessage = "无法开启录音: \(error.localizedDescription)"
             ShadowingDebug.log("beginRecording audio session failed: \(ShadowingDebug.describe(error))")
+            showErrorToast("开启录音失败")
             return
         }
 
@@ -767,8 +767,8 @@ extension ShadowingStore {
             newRecorder.prepareToRecord()
             let started = newRecorder.record()
             guard started else {
-                errorMessage = "开始录音失败"
                 ShadowingDebug.log("beginRecording recorder.record() returned false url=\(ShadowingDebug.fileSummary(url: url))")
+                showErrorToast("开启录音失败")
                 return
             }
 
@@ -790,8 +790,8 @@ extension ShadowingStore {
                 player?.volume = 0
             }
         } catch {
-            errorMessage = "开始录音失败: \(error.localizedDescription)"
             ShadowingDebug.log("beginRecording AVAudioRecorder init failed: \(ShadowingDebug.describe(error)) url=\(ShadowingDebug.fileSummary(url: url))")
+            showErrorToast("开启录音失败")
         }
     }
 
@@ -814,7 +814,7 @@ extension ShadowingStore {
 
         let minDuration: TimeInterval = 0.25
         if duration < minDuration {
-            errorMessage = "录音太短，请长按录音"
+            showErrorToast("录音时间太短，请再试一次")
             return
         }
 
@@ -874,7 +874,16 @@ extension ShadowingStore {
             } catch {
                 await MainActor.run {
                     print("[ShadowingStore] scoring failed: \(error)")
-                    self.errorMessage = "打分失败: \(ShadowingDebug.describe(error))"
+                    // Show user-friendly error message if available
+                    let message: String
+                    if let nsError = error as? NSError, 
+                       let desc = nsError.userInfo[NSLocalizedDescriptionKey] as? String,
+                       !desc.isEmpty {
+                        message = desc
+                    } else {
+                        message = "打分失败"
+                    }
+                    self.showErrorToast(message)
                     self.updateScoringState(forSegmentID: segmentID, isScoring: false)
                     self.isScoring = false
                 }
@@ -963,7 +972,7 @@ extension ShadowingStore {
             } catch {
                 await MainActor.run {
                     guard self.isComparing, self.comparingSegmentID == segment.id else { return }
-                    self.errorMessage = "对比播放失败: \(ShadowingDebug.describe(error))"
+                    self.showErrorToast("播放失败")
                     self.stopComparePlayback()
                 }
             }
@@ -978,7 +987,7 @@ extension ShadowingStore {
         alignmentCorrelation: Float
     ) {
         guard !refWaveform.isEmpty, !userWaveform.isEmpty else {
-            errorMessage = "对比播放失败：音频为空"
+            self.showErrorToast("播放失败")
             stopComparePlayback()
             return
         }
@@ -990,14 +999,14 @@ extension ShadowingStore {
             channels: 1,
             interleaved: false
         ) else {
-            errorMessage = "对比播放失败：无法创建音频格式"
+            self.showErrorToast("播放失败")
             stopComparePlayback()
             return
         }
 
         guard let refBuffer = makePCMBuffer(from: refWaveform, format: format),
               let userBuffer = makePCMBuffer(from: userWaveform, format: format) else {
-            errorMessage = "对比播放失败：无法创建音频缓冲"
+            self.showErrorToast("播放失败")
             stopComparePlayback()
             return
         }
@@ -1018,7 +1027,7 @@ extension ShadowingStore {
         do {
             try engine.start()
         } catch {
-            errorMessage = "对比播放失败: \(error.localizedDescription)"
+            self.showErrorToast("播放失败")
             stopComparePlayback()
             return
         }

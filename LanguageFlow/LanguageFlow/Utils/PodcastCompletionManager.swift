@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import Observation
 
 @Observable
 final class PodcastCompletionManager {
@@ -26,24 +27,32 @@ final class PodcastCompletionManager {
     func isCompleted(_ podcastId: String) -> Bool {
         completedPodcastIds.contains(podcastId)
     }
-    
+
+    func markCompleted(_ podcastId: String) {
+        guard !isCompleted(podcastId) else { return }
+        let completed = CompletedPodcast(podcastId: podcastId)
+        modelContext.insert(completed)
+        completedPodcastIds.insert(podcastId)
+        try? modelContext.save()
+    }
+
     func toggleCompletion(_ podcastId: String) {
         if isCompleted(podcastId) {
-            // 标记为未完成
-            let predicate = #Predicate<CompletedPodcast> { $0.podcastId == podcastId }
-            let descriptor = FetchDescriptor(predicate: predicate)
-            
-            if let completed = try? modelContext.fetch(descriptor).first {
-                modelContext.delete(completed)
-                completedPodcastIds.remove(podcastId)
-                try? modelContext.save()
-            }
+            removeCompletion(podcastId)
         } else {
-            // 标记为完成
-            let completed = CompletedPodcast(podcastId: podcastId)
-            modelContext.insert(completed)
-            completedPodcastIds.insert(podcastId)
-            try? modelContext.save()
+            markCompleted(podcastId)
         }
+    }
+
+    private func removeCompletion(_ podcastId: String) {
+        guard isCompleted(podcastId) else { return }
+        let descriptor = FetchDescriptor<CompletedPodcast>(
+            predicate: #Predicate { $0.podcastId == podcastId }
+        )
+        if let completed = try? modelContext.fetch(descriptor) {
+            completed.forEach { modelContext.delete($0) }
+        }
+        completedPodcastIds.remove(podcastId)
+        try? modelContext.save()
     }
 }

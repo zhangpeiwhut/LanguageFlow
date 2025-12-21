@@ -9,11 +9,14 @@ import Observation
 import AVFoundation
 import AVFAudio
 import SwiftData
+import MediaPlayer
 
 struct PodcastLearningView: View {
     let podcastId: String
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(AuthManager.self) private var authManager
+    @Environment(ToastManager.self) private var toastManager
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var store: PodcastLearningStore?
@@ -156,6 +159,9 @@ struct PodcastLearningView: View {
             DictionaryLookupView(word: item.word)
                 .presentationDetents([.medium])
         }
+        .onReceive(NotificationCenter.default.publisher(for: .recitingDidComplete)) { _ in
+            dismiss()
+        }
     }
 
     private struct LookupWord: Identifiable, Equatable {
@@ -192,13 +198,7 @@ struct PodcastLearningView: View {
             isLoading = true
             errorMessage = nil
             do {
-                var podcast: Podcast
-                if let cached = FavoriteManager.shared.cachedFavoritePodcast(podcastId, context: modelContext),
-                   let cachedPodcast = cached.toPodcast() {
-                    podcast = cachedPodcast
-                } else {
-                    podcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
-                }
+                let podcast = try await PodcastAPI.shared.getPodcastDetailById(podcastId)
 
                 var segments: [Podcast.Segment]
                 if let cachedSegments = await SegmentCacheManager.shared.cachedSegments(forPodcastId: podcast.id) {
@@ -220,7 +220,9 @@ struct PodcastLearningView: View {
                     podcast: podcast,
                     segments: segments,
                     localAudioURL: localAudioURL,
-                    modelContext: modelContext
+                    modelContext: modelContext,
+                    authManager: authManager,
+                    toastManager: toastManager
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -254,14 +256,26 @@ final class PodcastLearningStore {
     @ObservationIgnored private var isAudioSessionActive = false
     @ObservationIgnored let localAudioURL: URL
     @ObservationIgnored private var isSeeking = false
+    @ObservationIgnored private var hasSetupRemoteCommands = false
+    @ObservationIgnored private let authManager: AuthManager
+    @ObservationIgnored private let toastManager: ToastManager
 
     var audioFileURL: URL { localAudioURL }
 
-    init(podcast: Podcast, segments: [Podcast.Segment], localAudioURL: URL, modelContext: ModelContext) {
+    init(
+        podcast: Podcast,
+        segments: [Podcast.Segment],
+        localAudioURL: URL,
+        modelContext: ModelContext,
+        authManager: AuthManager,
+        toastManager: ToastManager
+    ) {
         self.podcast = podcast
         self.segments = segments
         self.modelContext = modelContext
         self.localAudioURL = localAudioURL
+        self.authManager = authManager
+        self.toastManager = toastManager
         let locallyFavorited = FavoriteManager.shared.isPodcastFavorited(podcast.id, context: modelContext)
         self.isGlobalFavorited = locallyFavorited || (podcast.status?.isFavorited ?? false)
         let favoritedSegmentIDs = FavoriteManager.shared.favoriteSegmentIDs(forPodcastId: podcast.id, context: modelContext)
@@ -279,10 +293,12 @@ final class PodcastLearningStore {
             currentTime = firstSegment.start
         }
         setupAudioPlayer()
+        setupRemoteCommandCenter()
     }
     
     deinit {
         cleanupAudioPlayer()
+        cleanupRemoteCommandCenter()
     }
 
     func pauseForShadowingTransition() {
@@ -318,6 +334,7 @@ final class PodcastLearningStore {
         globalPlaybackRate = rate
         if isGlobalPlaying {
             audioPlayer?.rate = Float(rate)
+            updateNowPlayingInfo()
         }
     }
 
@@ -344,6 +361,16 @@ final class PodcastLearningStore {
     }
     
     func toggleGlobalFavorite() {
+        if !isGlobalFavorited && !authManager.isVIP {
+            toastManager.show(
+                "该功能为会员专享",
+                icon: "evil",
+                iconSource: .asset,
+                iconSize: CGSize(width: 34, height: 34),
+                duration: 1.2
+            )
+            return
+        }
         isGlobalFavorited.toggle()
         let shouldFavorite = isGlobalFavorited
         Task {
@@ -405,6 +432,16 @@ final class PodcastLearningStore {
 
     func toggleFavorite(for segment: Podcast.Segment) {
         var state = currentState(for: segment)
+        if !state.isFavorited && !authManager.isVIP {
+            toastManager.show(
+                "该功能为会员专享",
+                icon: "evil",
+                iconSource: .asset,
+                iconSize: CGSize(width: 34, height: 34),
+                duration: 1.2
+            )
+            return
+        }
         let wasFavorited = state.isFavorited
         state.isFavorited.toggle()
         segmentStates[segment.id] = state
@@ -555,6 +592,89 @@ final class PodcastLearningStore {
         audioPlayer = AVPlayer(url: localAudioURL)
     }
 
+    private func setupRemoteCommandCenter() {
+        guard !hasSetupRemoteCommands else { return }
+        hasSetupRemoteCommands = true
+
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            if !self.isGlobalPlaying {
+                self.toggleGlobalPlayback()
+            }
+            return .success
+        }
+
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            if self.isGlobalPlaying {
+                self.toggleGlobalPlayback()
+            }
+            return .success
+        }
+
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.playNextSegment()
+            return .success
+        }
+
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.playPreviousSegment()
+            return .success
+        }
+
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            let progress = event.positionTime / self.totalDuration
+            self.jumpTo(progress: progress)
+            return .success
+        }
+    }
+
+    private func cleanupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    private func updateNowPlayingInfo() {
+        var nowPlayingInfo = [String: Any]()
+
+        let title = podcast.title?.removingTrailingDateSuffix() ?? "Podcast"
+        nowPlayingInfo[MPMediaItemPropertyTitle] = title
+
+        if let translation = podcast.titleTranslation?.removingTrailingDateSuffix(), !translation.isEmpty {
+            nowPlayingInfo[MPMediaItemPropertyArtist] = translation
+        }
+
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = totalDuration
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isGlobalPlaying ? globalPlaybackRate : 0.0
+
+        if let currentSegment = segments.first(where: { $0.id == currentSegmentID }) {
+            let segmentTitle = currentSegment.text
+            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = segmentTitle
+        }
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
     private func activateAudioSessionIfNeeded() {
         guard !isAudioSessionActive else { return }
         do {
@@ -629,6 +749,7 @@ final class PodcastLearningStore {
             self.currentSegmentID = segment.id
             self.setPlayingSegment(segment.id)
             self.isSeeking = false
+            self.updateNowPlayingInfo()
             self.timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { [weak self] time in
                 guard let self = self else { return }
                 guard !self.isSeeking else { return }
@@ -636,10 +757,11 @@ final class PodcastLearningStore {
                 self.currentTime = currentSeconds
                 if self.isGlobalMode {
                     if let currentSegment = self.segments.first(where: {
-                        currentSeconds >= $0.start && currentSeconds < $0.end 
+                        currentSeconds >= $0.start && currentSeconds < $0.end
                     }) {
                         if self.currentSegmentID != currentSegment.id {
                             self.currentSegmentID = currentSegment.id
+                            self.updateNowPlayingInfo()
                         }
                     }
                     if let lastSegment = self.segments.last,
@@ -694,6 +816,7 @@ final class PodcastLearningStore {
         if let player = audioPlayer {
             currentTime = player.currentTime().seconds
         }
+        updateNowPlayingInfo()
     }
     
     private func advanceToNextSegment() {

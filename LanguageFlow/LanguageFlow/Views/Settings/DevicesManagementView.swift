@@ -147,7 +147,7 @@ struct DeviceRow: View {
             // 设备图标
             Image(systemName: device.isCurrent ? "iphone.badge.checkmark" : "iphone")
                 .font(.title2)
-                .foregroundColor(device.isCurrent ? .green : .secondary)
+                .foregroundColor(device.isCurrent ? .accentColor : .secondary)
                 .frame(width: 40)
 
             // 设备信息
@@ -164,16 +164,16 @@ struct DeviceRow: View {
                             .padding(.vertical, 2)
                             .background(
                                 Capsule()
-                                    .fill(Color.green)
+                                    .fill(Color.accentColor)
                             )
                     }
                 }
 
-                Text("绑定时间: \(device.bindTime.formatted(.dateTime.month().day().hour().minute()))")
+                Text("绑定时间: \(device.bindTime.formattedCN())")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Text("最后活跃: \(device.lastActiveTime.formatted(.relative(presentation: .named)))")
+                Text("最后活跃: \(device.lastActiveTime.formattedCN())")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

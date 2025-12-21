@@ -81,15 +81,25 @@ private struct SegmentPracticeCard: View {
                 onFavorite: onFavorite
             )
         }
-        .padding(12)
+        .padding(14)
         .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isActive ? Color.accentColor.opacity(0.08) : Color(.secondarySystemBackground))
+            RoundedRectangle(cornerRadius: 14)
+                .fill(isActive ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                .shadow(color: isActive ? .black.opacity(0.08) : .clear, radius: 8, x: 0, y: 2)
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isActive ? Color.accentColor : Color.clear, lineWidth: 1.5)
+        .overlay(alignment: .leading) {
+            if isActive {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 14,
+                    bottomLeadingRadius: 14,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .fill(Color.accentColor)
+                .frame(width: 3)
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .contentShape(Rectangle())
         .onTapGesture {
             onPlay()
@@ -118,20 +128,39 @@ private struct SegmentPracticeControls: View {
     let onFavorite: () -> Void
     
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
             Spacer()
 
             Button(action: onToggleLoop) {
-                Image(systemName: "arrow.trianglehead.clockwise.rotate.90")
-                    .font(.body)
-                    .foregroundColor(isLooping ? .accentColor : .secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 16, weight: .medium))
+
+                    if isLooping {
+                        Text("循环")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                .foregroundColor(isLooping ? .primary : .secondary)
+                .padding(.trailing, 8)
+                .padding(.vertical, 7)
+                .background {
+                    if isLooping {
+                        Capsule()
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isLooping)
             }
             .buttonStyle(.plain)
 
             Button(action: onFavorite) {
                 Image(systemName: isFavorited ? "heart.fill" : "heart")
-                    .font(.body)
-                    .foregroundColor(isFavorited ? .pink : .secondary)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(isFavorited ? .red : .secondary)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
         }

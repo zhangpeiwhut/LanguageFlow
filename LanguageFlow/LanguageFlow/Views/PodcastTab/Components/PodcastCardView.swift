@@ -14,7 +14,6 @@ struct PodcastCardView: View {
     let segmentText: String
     let onTap: () -> Void
     let isCompleted: Bool
-    let onToggleCompletion: () -> Void
 
     @State private var shakeTrigger = 0
     @Environment(AuthManager.self) private var authManager
@@ -36,6 +35,10 @@ struct PodcastCardView: View {
             result.removeLast()
         }
         return result
+    }
+
+    private var isLocked: Bool {
+        !(podcast.isFree || authManager.isVIP)
     }
 
     var body: some View {
@@ -60,40 +63,33 @@ struct PodcastCardView: View {
 
                     Spacer()
 
-                    HStack(spacing: 8) {
-                        if podcast.isFree || authManager.isVIP {
-                            Button {
-                                onToggleCompletion()
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.title3)
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(
-                                        Color.white,
-                                        isCompleted ? Color.main : Color(white: 0.85)
-                                    )
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                            .phaseAnimator(
+                                ShakePhase.allCases,
+                                trigger: shakeTrigger
+                            ) { view, phase in
+                                view.rotationEffect(phase.angle, anchor: .top)
+                            } animation: { phase in
+                                switch phase {
+                                case .idle: .easeOut(duration: 0.1)
+                                case .left: .easeInOut(duration: 0.08)
+                                case .right: .easeInOut(duration: 0.08)
+                                case .left2: .easeInOut(duration: 0.08)
+                                case .right2: .easeInOut(duration: 0.08)
+                                case .end: .easeOut(duration: 0.1)
+                                }
                             }
-                            .buttonStyle(.plain)
-                        } else {
-                            Image(systemName: "lock.fill")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .keyframeAnimator(
-                                    initialValue: ShakeValues(),
-                                    trigger: shakeTrigger,
-                                    content: { view, values in
-                                        view
-                                            .rotationEffect(values.angle, anchor: .top)
-                                    }, keyframes: { _ in
-                                        KeyframeTrack(\.angle) {
-                                            LinearKeyframe(.zero, duration: 0)
-                                            LinearKeyframe(.degrees(15), duration: 0.1)
-                                            LinearKeyframe(.degrees(-15), duration: 0.2)
-                                            LinearKeyframe(.zero, duration: 0.1)
-                                        }
-                                    }
-                                )
-                        }
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(
+                                Color.white,
+                                isCompleted ? Color.green : Color(.quaternaryLabel)
+                            )
                     }
                 }
 
@@ -117,17 +113,32 @@ struct PodcastCardView: View {
             handleTap()
         }
     }
-    
+
     private func handleTap() {
-        if podcast.isFree || authManager.isVIP {
-            onTap()
-        } else {
+        if isLocked {
             shakeTrigger += 1
         }
+        onTap()
     }
 }
 
-// MARK: - Shake Animation Values
-struct ShakeValues {
-    var angle: Angle = .zero
+// MARK: - Shake Animation Phase
+enum ShakePhase: CaseIterable {
+    case idle
+    case left
+    case right
+    case left2
+    case right2
+    case end
+
+    var angle: Angle {
+        switch self {
+        case .idle: .zero
+        case .left: .degrees(-20)
+        case .right: .degrees(20)
+        case .left2: .degrees(-15)
+        case .right2: .degrees(15)
+        case .end: .zero
+        }
+    }
 }

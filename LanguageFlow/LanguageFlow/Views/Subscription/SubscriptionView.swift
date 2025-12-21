@@ -2,14 +2,12 @@ import SwiftUI
 import StoreKit
 
 struct SubscriptionView: View {
-    @State private var iapManager = IAPManager.shared
     @Environment(AuthManager.self) private var authManager
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Status Banner
                     if authManager.isVIP {
                         activeSubscriptionBanner
                     }
@@ -17,7 +15,6 @@ struct SubscriptionView: View {
                     // Subscription Store View
                     subscriptionStoreSection
 
-                    // Device Management (VIP only)
                     if authManager.isVIP {
                         deviceManagementSection
                     }
@@ -28,7 +25,7 @@ struct SubscriptionView: View {
             .navigationTitle("订阅")
             .navigationBarTitleDisplayMode(.large)
             .task {
-                await iapManager.refresh()
+                try? await AuthManager.shared.syncUserStatus()
             }
         }
     }
@@ -41,13 +38,11 @@ struct SubscriptionView: View {
                 .foregroundColor(.green)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("已激活 Pro 会员")
+                Text("已激活会员")
                     .font(.headline)
 
                 if let expireTime = authManager.vipExpireTime {
-                    Text("到期时间: \(expireTime.formatted(.dateTime.month().day().year()))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("到期时间: \(expireTime.formattedCN())")
                 } else {
                     Text("感谢您的支持，尽情享用完整功能")
                         .font(.caption)
@@ -66,15 +61,20 @@ struct SubscriptionView: View {
 
     // MARK: - Subscription Store Section
     private var subscriptionStoreSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("选择订阅方案")
-                .font(.title2.weight(.semibold))
-                .padding(.horizontal, 4)
+        SubscriptionStoreView(
+            groupID: SubscriptionGroupID.pro,
+            marketingContent: {
 
-            SubscriptionStoreView(groupID: SubscriptionGroupID.pro)
-                .subscriptionStoreControlStyle(.prominentPicker)
-                .subscriptionStorePickerItemBackground(.regularMaterial)
-                .storeButton(.visible, for: .restorePurchases)
+            }
+        )
+        .subscriptionStoreControlStyle(.pagedProminentPicker, placement: .bottomBar)
+        .subscriptionStorePickerItemBackground(.regularMaterial)
+        .storeButton(.visible, for: .restorePurchases)
+        .storeButton(.visible, for: .policies)
+        .onInAppPurchaseCompletion { (_, result) in
+            Task {
+                await IAPManager.shared.purchaseCompletion(result: result)
+            }
         }
     }
 
@@ -152,5 +152,14 @@ private struct FeatureRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
+    }
+}
+
+extension Date {
+    func formattedCN() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: self)
     }
 }

@@ -20,9 +20,9 @@ struct SecondLevelView: View {
     @State private var pageLoadError: String?
     @State private var areTranslationsHidden = true
     @State private var navigateToPodcastId: String?
-    @State private var completionManager: PodcastCompletionManager?
+    @Query(sort: \CompletedPodcast.completedAt, order: .reverse) private var completedPodcasts: [CompletedPodcast]
     @Environment(AuthManager.self) private var authManager
-    @Environment(\.modelContext) private var modelContext
+    @Environment(ToastManager.self) private var toastManager
 
     var body: some View {
         Group {
@@ -33,7 +33,7 @@ struct SecondLevelView: View {
                     Task { await loadPage(page: currentPage) }
                 }
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     if totalPages > 1 {
                         pageSelector
                             .padding(.horizontal, 16)
@@ -49,7 +49,7 @@ struct SecondLevelView: View {
                         } else {
                             ZStack(alignment: .bottom) {
                                 ScrollView {
-                                    LazyVStack(spacing: 14) {
+                                    LazyVStack(spacing: 12) {
                                         ForEach(podcasts) { podcast in
                                             PodcastCardView(
                                                 podcast: podcast,
@@ -59,13 +59,11 @@ struct SecondLevelView: View {
                                                 onTap: {
                                                     handlePodcastTap(podcast)
                                                 },
-                                                isCompleted: completionManager?.isCompleted(podcast.id) ?? false,
-                                                onToggleCompletion: {
-                                                    completionManager?.toggleCompletion(podcast.id)
-                                                }
+                                                isCompleted: completedIDs.contains(podcast.id)
                                             )
                                         }
                                     }
+                                    .padding(.top, totalPages == 1 ? 6 : 0)
                                     .padding(.horizontal, 16)
                                     .padding(.bottom, (!authManager.isVIP) ? 180 : 40)
                                 }
@@ -101,18 +99,27 @@ struct SecondLevelView: View {
             }
         }
         .task {
-            if completionManager == nil {
-                completionManager = PodcastCompletionManager(modelContext: modelContext)
-            }
             await loadFirstPageIfNeeded()
         }
     }
 }
 
 private extension SecondLevelView {
+    var completedIDs: Set<String> {
+        Set(completedPodcasts.map(\.podcastId))
+    }
+
     func handlePodcastTap(_ podcast: PodcastSummary) {
         if podcast.isFree || authManager.isVIP {
             navigateToPodcastId = podcast.id
+        } else {
+            toastManager.show(
+                "该内容为会员专享",
+                icon: "evil",
+                iconSource: .asset,
+                iconSize: CGSize(width: 34, height: 34),
+                duration: 1.2
+            )
         }
     }
 
@@ -214,19 +221,19 @@ private extension SecondLevelView {
                         Task { await loadPage(page: page) }
                     } label: {
                         Text("\(page)")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(currentPage == page ? .white : .primary)
+                            .font(.system(size: 16, weight: currentPage == page ? .semibold : .medium))
+                            .foregroundColor(currentPage == page ? .primary : .secondary)
                             .frame(minWidth: 36, minHeight: 36)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(currentPage == page ? Color.main : Color(uiColor: .secondarySystemGroupedBackground))
+                                    .fill(currentPage == page ? Color(uiColor: .systemBackground) : Color(uiColor: .secondarySystemGroupedBackground))
                             )
                     }
                     .disabled(page == currentPage)
                 }
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 8)
+            .padding(.top, 2)
         }
     }
 }

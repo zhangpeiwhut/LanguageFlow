@@ -7,9 +7,7 @@ import SwiftUI
 import UIKit
 
 struct FirstLevelView: View {
-    @State private var filteredChannels: [Channel] = Channel.ChannelKnown.allCases.map { knownChannel in
-        Channel(company: "VOA", channel: knownChannel.rawValue)
-    }
+    @State private var groupedChannels: [String: [Channel]] = [:]
     @State private var errorMessage: String?
     @State private var searchText = ""
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -19,18 +17,31 @@ struct FirstLevelView: View {
         return Array(repeating: GridItem(.flexible(), spacing: 16), count: columnCount)
     }
 
+    private var sortedCompanies: [String] {
+        groupedChannels.keys.sorted()
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 ScrollView {
-                    LazyVGrid(columns: gridColumns, spacing: 16) {
-                        ForEach(filteredChannels) { channel in
-                            NavigationLink(destination: SecondLevelView(channel: channel)) {
-                                ChannelCardView(channel: channel)
+                    LazyVStack(spacing: 8) {
+                        ForEach(sortedCompanies, id: \.self) { company in
+                            Section {
+                                LazyVGrid(columns: gridColumns, spacing: 16) {
+                                    ForEach(groupedChannels[company] ?? []) { channel in
+                                        NavigationLink(destination: SecondLevelView(channel: channel)) {
+                                            ChannelCardView(channel: channel)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            } header: {
+                                CompanySectionHeader(companyName: company)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(.top, -8)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 16)
                 }
@@ -42,12 +53,17 @@ struct FirstLevelView: View {
             .onChange(of: searchText) { _, newValue in
                 filterChannels(searchText: newValue)
             }
+            .onAppear {
+                if groupedChannels.isEmpty {
+                    filterChannels(searchText: "")
+                }
+            }
         }
     }
 
     private func filterChannels(searchText: String) {
         let channels = Channel.ChannelKnown.allCases.map { knownChannel in
-            Channel(company: "VOA", channel: knownChannel.rawValue)
+            Channel(company: knownChannel.company, channel: knownChannel.rawValue)
         }
         let filtered: [Channel]
         if searchText.isEmpty {
@@ -60,7 +76,28 @@ struct FirstLevelView: View {
                        chineseName.localizedCaseInsensitiveContains(searchText)
             }
         }
-        filteredChannels = filtered
+
+        // Group channels by company
+        groupedChannels = Dictionary(grouping: filtered) { $0.company }
+    }
+}
+
+// MARK: - Company Section Header
+struct CompanySectionHeader: View {
+    let companyName: String
+
+    var body: some View {
+        HStack {
+            Text(companyName)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(.primary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
 
@@ -71,46 +108,40 @@ struct ChannelCardView: View {
     private let labelHeight: CGFloat = 42
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.gray.opacity(0.1), lineWidth: 1)
-                )
-
-            VStack(spacing: 0) {
-                Group {
-                    if let image = channel.image {
-                        image
-                            .resizable()
-                            .aspectRatio(imageAspectRatio, contentMode: .fit)
-                    } else {
-                        Color.gray.opacity(0.2)
-                            .aspectRatio(imageAspectRatio, contentMode: .fit)
-                    }
+        VStack(spacing: 0) {
+            Group {
+                if let image = channel.image {
+                    image
+                        .resizable()
+                        .aspectRatio(imageAspectRatio, contentMode: .fit)
+                } else {
+                    Color.gray.opacity(0.2)
+                        .aspectRatio(imageAspectRatio, contentMode: .fit)
                 }
-                .frame(maxWidth: .infinity)
-                .clipped()
-
-                ZStack {
-                    Color(uiColor: .secondarySystemGroupedBackground)
-
-                    Text(channel.chineseName)
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                }
-                .frame(maxWidth: .infinity, minHeight: labelHeight, maxHeight: labelHeight)
             }
-            .clipShape(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            ZStack {
+                Color(uiColor: .secondarySystemGroupedBackground)
+
+                Text(channel.chineseName)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+            }
+            .frame(maxWidth: .infinity, minHeight: labelHeight, maxHeight: labelHeight)
         }
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+        )
     }
 }
 
@@ -130,6 +161,14 @@ private extension Channel {
         case scienceTechnology = "Science & Technology"
         case usHistory = "U.S. History"
         case wordsAndTheirStories = "Words and Their Stories"
+
+        // Gutenberg
+        case sherlockHolmes = "SherlockHolmes"
+
+        // Disney
+        #if DEBUG
+        case zootopia = "Zootopia"
+        #endif
 
         var chineseName: String {
             switch self {
@@ -159,6 +198,12 @@ private extension Channel {
                 return "美国历史"
             case .wordsAndTheirStories:
                 return "词汇与故事"
+            case .sherlockHolmes:
+                return "夏洛克·福尔摩斯"
+            #if DEBUG
+            case .zootopia:
+                return "迪士尼"
+            #endif
             }
         }
         
@@ -190,6 +235,25 @@ private extension Channel {
                 return "us_history"
             case .wordsAndTheirStories:
                 return "words_and_their_stories"
+            case .sherlockHolmes:
+                return "sherlock"
+            #if DEBUG
+            case .zootopia:
+                return "sing"
+            #endif
+            }
+        }
+
+        var company: String {
+            switch self {
+            case .americasNationalParks, .americasPresidents, .americanStories, .artsCulture, .askATeacher, .earlyLiteracy, .education, .educationTips, .everydayGrammar, .healthLifestyle, .scienceTechnology, .usHistory, .wordsAndTheirStories:
+                return "VOA"
+            case .sherlockHolmes:
+                return "Gutenberg"
+            #if DEBUG
+            case .zootopia:
+                return "Disney"
+            #endif
             }
         }
     }

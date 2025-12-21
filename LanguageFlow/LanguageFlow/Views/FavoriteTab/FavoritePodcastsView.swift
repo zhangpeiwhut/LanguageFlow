@@ -9,20 +9,20 @@ import SwiftUI
 import SwiftData
 
 // MARK: - 整篇收藏
-struct FavoritePodcastsView: View {
+struct FavoritePodcastsView<EmptyView: View>: View {
     @Binding var navigationPath: NavigationPath
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \FavoritePodcast.createdAt, order: .reverse) private var favoritePodcastsData: [FavoritePodcast]
-    @State private var favoritePodcasts: [FavoritePodcast] = []
+    @Query(sort: \FavoritePodcast.createdAt, order: .reverse) private var favoritePodcasts: [FavoritePodcast]
+    @ViewBuilder var emptyView: EmptyView
 
     var body: some View {
         Group {
-            if !favoritePodcasts.isEmpty {
+            if favoritePodcasts.isEmpty {
+                emptyView
+            } else {
                 contentList
             }
         }
-        .onAppear(perform: syncFavorites)
-        .onChange(of: favoritePodcastsData.count) { _, _ in syncFavorites() }
     }
 }
 
@@ -42,7 +42,6 @@ private extension FavoritePodcastsView {
                         Task {
                             do {
                                 try await FavoriteManager.shared.unfavoritePodcast(podcast.id, context: modelContext)
-                                await MainActor.run { syncFavorites() }
                             } catch {
                                 print("取消收藏失败: \(error)")
                             }
@@ -53,10 +52,6 @@ private extension FavoritePodcastsView {
             }
         }
         .padding(.bottom, 32)
-    }
-
-    func syncFavorites() {
-        favoritePodcasts = favoritePodcastsData
     }
 
     func durationText(for podcast: FavoritePodcast) -> String {
@@ -99,7 +94,7 @@ private struct FavoritePodcastCard: View {
                 Button(action: onUnfavorite) {
                     Image(systemName: "heart.fill")
                         .font(.caption)
-                        .foregroundColor(.pink)
+                        .foregroundColor(.red)
                 }
                 .buttonStyle(.plain)
             }

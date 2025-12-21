@@ -58,10 +58,11 @@ struct GlobalPlaybackBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             Slider(value: progressBinding, in: 0...1, onEditingChanged: onSeekEditingChanged)
                 .tint(Color.accentColor)
-            
+                .padding(2)
+
             HStack {
                 Text(formatTime(currentTime))
                     .font(.caption)
@@ -88,9 +89,11 @@ struct GlobalPlaybackBar: View {
                 rateButton
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 30)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.clear)
+        .contentShape(Rectangle())
+        .glassEffect()
     }
     
     private var playButton: some View {
@@ -128,7 +131,7 @@ struct GlobalPlaybackBar: View {
         Button(action: onToggleFavorite) {
             Image(systemName: isFavorited ? "heart.fill" : "heart")
                 .font(.system(size: 24))
-                .foregroundStyle(isFavorited ? .red : .primary)
+                .foregroundColor(isFavorited ? .red : .primary)
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
