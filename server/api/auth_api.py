@@ -61,6 +61,8 @@ def register_or_login_handler(request: RegisterRequest, auth_db: AuthDatabase) -
                     expire_ms
                 )
 
+        auth_db.record_auth_activity(request.device_uuid)
+
         return {
             "code": 0,
             "message": "success",
@@ -75,6 +77,7 @@ def register_or_login_handler(request: RegisterRequest, auth_db: AuthDatabase) -
     else:
         # 新用户，创建记录
         user_id = auth_db.create_user(request.device_uuid)
+        auth_db.record_auth_activity(request.device_uuid)
         logger.info("创建新用户 device_uuid=%s user_id=%s", request.device_uuid, user_id)
 
         return {
@@ -88,4 +91,3 @@ def register_or_login_handler(request: RegisterRequest, auth_db: AuthDatabase) -
                 "access_token": access_token
             }
         }
-

@@ -1,6 +1,7 @@
 """认证和内购相关数据库模型"""
+import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
 
@@ -14,6 +15,23 @@ def _to_timestamp_ms(dt: Optional[datetime]) -> Optional[int]:
 def _now_ms() -> int:
     """当前时间的毫秒级时间戳"""
     return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def _get_metrics_tz_offset_hours() -> int:
+    raw = os.getenv("METRICS_TZ_OFFSET", "8").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return 8
+
+
+def _get_metrics_tzinfo() -> timezone:
+    return timezone(timedelta(hours=_get_metrics_tz_offset_hours()))
+
+
+def _get_metrics_sql_offset() -> str:
+    offset = _get_metrics_tz_offset_hours()
+    return f"{offset:+d} hours"
 
 
 class AuthDatabase:
@@ -83,6 +101,29 @@ class AuthDatabase:
             )
         """)
 
+        # 登录/注册日活记录表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auth_activity_daily (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                day TEXT NOT NULL,
+                device_uuid TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(day, device_uuid)
+            )
+        """)
+
+        # 成功交易事件表（去重）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id TEXT UNIQUE NOT NULL,
+                original_transaction_id TEXT NOT NULL,
+                event_type TEXT,
+                device_uuid TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # App Store 通知日志表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS notification_logs (
@@ -106,6 +147,10 @@ class AuthDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_active ON device_bindings(last_active_time)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notification_uuid ON notification_logs(notification_uuid)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notification_trans_id ON notification_logs(original_transaction_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_created_at ON purchase_records(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_activity_day ON auth_activity_daily(day)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_events_created_at ON purchase_events(created_at)")
 
         conn.commit()
         conn.close()
@@ -189,13 +234,13 @@ class AuthDatabase:
     def create_purchase_record(self, original_transaction_id: str, product_id: str,
                                purchase_date: datetime, expire_date: Optional[datetime] = None,
                                environment: str = 'production', status: str = 'active',
-                               event_type: str = 'purchase'):
-        """创建付费凭证记录（支持空过期时间）"""
+                               event_type: str = 'purchase') -> bool:
+        """创建付费凭证记录（支持空过期时间），插入成功返回 True"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO purchase_records
+            INSERT OR IGNORE INTO purchase_records
             (original_transaction_id, product_id, purchase_date, expire_date, status, environment, device_count)
             VALUES (?, ?, ?, ?, ?, ?, 0)
         """, (
@@ -206,8 +251,10 @@ class AuthDatabase:
             status,
             environment
         ))
+        inserted = cursor.rowcount > 0
         conn.commit()
         conn.close()
+        return inserted
 
     def update_purchase_record(self, original_transaction_id: str, expire_date: Optional[datetime]):
         """更新付费凭证（续费）"""
@@ -352,6 +399,42 @@ class AuthDatabase:
         conn.commit()
         conn.close()
 
+    def record_auth_activity(self, device_uuid: str, day: Optional[str] = None) -> bool:
+        """记录登录/注册日活（去重），成功返回 True"""
+        if not day:
+            day = datetime.now(_get_metrics_tzinfo()).date().isoformat()
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO auth_activity_daily (day, device_uuid)
+            VALUES (?, ?)
+        """, (day, device_uuid))
+        inserted = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return inserted
+
+    def record_purchase_event(
+        self,
+        transaction_id: str,
+        original_transaction_id: str,
+        event_type: Optional[str],
+        device_uuid: Optional[str],
+    ) -> bool:
+        """记录成功交易事件（去重），成功返回 True"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO purchase_events
+            (transaction_id, original_transaction_id, event_type, device_uuid)
+            VALUES (?, ?, ?, ?)
+        """, (transaction_id, original_transaction_id, event_type, device_uuid))
+        inserted = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return inserted
+
     def log_transaction(self, device_uuid: str, original_transaction_id: str,
                        event_type: str, jws_token: Optional[str] = None):
         """记录交易日志（简化版本，transaction_id 使用 original_transaction_id）"""
@@ -407,5 +490,122 @@ class AuthDatabase:
             return True
         except sqlite3.IntegrityError:
             return False
+        finally:
+            conn.close()
+
+    def get_metrics_snapshot(self, days: int = 7) -> Dict[str, Any]:
+        """获取注册与购买的聚合指标快照"""
+        if days < 1:
+            raise ValueError("days must be >= 1")
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            def _fetch_count(sql: str, params: tuple = ()) -> int:
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+                return int(row[0]) if row and row[0] is not None else 0
+
+            total_users = _fetch_count("SELECT COUNT(*) FROM users")
+            new_users_24h = _fetch_count(
+                "SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-1 day')"
+            )
+
+            total_transactions = _fetch_count("SELECT COUNT(*) FROM purchase_events")
+            transactions_24h = _fetch_count(
+                "SELECT COUNT(*) FROM purchase_events WHERE created_at >= datetime('now', '-1 day')"
+            )
+
+            now_ms = _now_ms()
+            active_subscriptions = _fetch_count(
+                """
+                SELECT COUNT(*)
+                FROM purchase_records
+                WHERE status IN ('active', 'in_retry')
+                  AND (expire_date IS NULL OR expire_date >= ?)
+                """,
+                (now_ms,),
+            )
+
+            tz_info = _get_metrics_tzinfo()
+            offset_modifier = _get_metrics_sql_offset()
+            today_local = datetime.now(tz_info).date()
+            start_day = (today_local - timedelta(days=days - 1)).isoformat()
+
+            daily_active_today = _fetch_count(
+                "SELECT COUNT(*) FROM auth_activity_daily WHERE day = ?",
+                (today_local.isoformat(),),
+            )
+
+            cursor.execute(
+                """
+                SELECT date(created_at, ?) AS day, COUNT(*)
+                FROM users
+                WHERE date(created_at, ?) >= ?
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (offset_modifier, offset_modifier, start_day),
+            )
+            users_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT day, COUNT(*)
+                FROM auth_activity_daily
+                WHERE day >= ?
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (start_day,),
+            )
+            daily_active_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT date(created_at, ?) AS day, COUNT(*)
+                FROM purchase_events
+                WHERE date(created_at, ?) >= ?
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (offset_modifier, offset_modifier, start_day),
+            )
+            transactions_rows = cursor.fetchall()
+
+            users_map = {row[0]: int(row[1]) for row in users_rows if row[0]}
+            daily_active_map = {row[0]: int(row[1]) for row in daily_active_rows if row[0]}
+            transactions_map = {row[0]: int(row[1]) for row in transactions_rows if row[0]}
+
+            date_keys = [
+                (today_local - timedelta(days=offset)).isoformat()
+                for offset in range(days - 1, -1, -1)
+            ]
+
+            users_series = [{"day": day, "count": users_map.get(day, 0)} for day in date_keys]
+            daily_active_series = [
+                {"day": day, "count": daily_active_map.get(day, 0)} for day in date_keys
+            ]
+            transactions_series = [
+                {"day": day, "count": transactions_map.get(day, 0)} for day in date_keys
+            ]
+
+            return {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "summary": {
+                    "total_users": total_users,
+                    "new_users_24h": new_users_24h,
+                    "daily_active_users": daily_active_today,
+                    "total_transactions": total_transactions,
+                    "transactions_24h": transactions_24h,
+                    "active_subscriptions": active_subscriptions,
+                },
+                "series": {
+                    "registrations": users_series,
+                    "daily_active": daily_active_series,
+                    "transactions": transactions_series,
+                },
+                "window_days": days,
+            }
         finally:
             conn.close()

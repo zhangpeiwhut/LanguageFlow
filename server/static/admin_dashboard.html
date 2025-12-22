@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LanguageFlow Ops Dashboard</title>
+    <style>
+      :root {
+        --ink: #0d1b1e;
+        --muted: #5b6b70;
+        --bg: #f4f0e6;
+        --card: #fff7eb;
+        --accent: #ff7a3d;
+        --accent-2: #2a8f7b;
+        --accent-3: #1d3557;
+        --border: rgba(13, 27, 30, 0.12);
+        --shadow: 0 18px 45px rgba(13, 27, 30, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "IBM Plex Sans", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 15% 20%, rgba(255, 122, 61, 0.18), transparent 55%),
+          radial-gradient(circle at 80% 10%, rgba(42, 143, 123, 0.2), transparent 45%),
+          linear-gradient(135deg, #f2e9da 0%, #f8f3ea 50%, #f2efe6 100%);
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          115deg,
+          rgba(13, 27, 30, 0.04) 0,
+          rgba(13, 27, 30, 0.04) 1px,
+          transparent 1px,
+          transparent 8px
+        );
+        pointer-events: none;
+        opacity: 0.5;
+      }
+
+      main {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 36px 24px 60px;
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .title-block h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 40px);
+        letter-spacing: -0.02em;
+      }
+
+      .title-block p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .chip {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.6);
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .btn {
+        appearance: none;
+        border: none;
+        padding: 10px 18px;
+        border-radius: 12px;
+        font-weight: 600;
+        background: var(--accent-3);
+        color: #fff8f1;
+        cursor: pointer;
+        box-shadow: 0 10px 25px rgba(29, 53, 87, 0.25);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .btn.secondary {
+        background: transparent;
+        color: var(--accent-3);
+        border: 1px solid var(--border);
+        box-shadow: none;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px rgba(29, 53, 87, 0.2);
+      }
+
+      .panel {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 18px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .panel label {
+        font-size: 13px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .panel input {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #fffdf8;
+        min-width: 220px;
+        font-size: 14px;
+      }
+
+      .panel .field {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .status {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .summary {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+
+      .card {
+        background: #fffdf8;
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        box-shadow: 0 14px 35px rgba(13, 27, 30, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 120px;
+      }
+
+      .card .label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .card .value {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .card .sub {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .charts {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .chart-card {
+        min-height: 220px;
+        gap: 14px;
+      }
+
+      .chart-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+
+      .chart-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .chart-total {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .chart {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(8px, 1fr));
+        gap: 6px;
+        align-items: end;
+        height: 130px;
+      }
+
+      .bar {
+        height: calc(var(--h) * 1%);
+        background: linear-gradient(180deg, rgba(255, 122, 61, 0.9), rgba(255, 122, 61, 0.25));
+        border-radius: 6px 6px 3px 3px;
+        transition: height 0.6s ease;
+      }
+
+      .bar.alt {
+        background: linear-gradient(180deg, rgba(42, 143, 123, 0.9), rgba(42, 143, 123, 0.25));
+      }
+
+      .bar.deep {
+        background: linear-gradient(180deg, rgba(29, 53, 87, 0.9), rgba(29, 53, 87, 0.2));
+      }
+
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .fade-in {
+        opacity: 0;
+        transform: translateY(12px);
+        animation: rise 0.7s ease forwards;
+      }
+
+      @keyframes rise {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding: 28px 18px 48px;
+        }
+
+        .controls {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .panel {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .panel input {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="title-block">
+          <h1>LanguageFlow Ops</h1>
+          <p>Live register, daily active, and transaction metrics.</p>
+        </div>
+        <div class="controls">
+          <div class="chip">Updated <span id="updatedAt">--</span></div>
+          <button class="btn" id="refreshBtn">Refresh</button>
+        </div>
+      </header>
+
+      <section class="panel fade-in" style="animation-delay: 0.05s;">
+        <div class="field">
+          <label for="tokenInput">Admin token</label>
+          <input id="tokenInput" type="password" placeholder="Set X-Admin-Token" />
+        </div>
+        <div class="field">
+          <label for="daysInput">Window (days)</label>
+          <input id="daysInput" type="number" min="1" max="90" value="7" />
+        </div>
+        <div class="controls">
+          <button class="btn" id="saveBtn">Save & Load</button>
+          <button class="btn secondary" id="clearBtn">Clear</button>
+        </div>
+        <div class="status" id="statusMsg">Enter token to load metrics.</div>
+      </section>
+
+      <section class="grid summary fade-in" style="animation-delay: 0.1s;">
+        <div class="card">
+          <div class="label">Total Users</div>
+          <div class="value" id="totalUsers">--</div>
+          <div class="sub">Unique registered devices</div>
+        </div>
+        <div class="card">
+          <div class="label">New Users (24h)</div>
+          <div class="value" id="newUsers">--</div>
+          <div class="sub">Last 24 hours</div>
+        </div>
+        <div class="card">
+          <div class="label">Daily Active</div>
+          <div class="value" id="dailyActive">--</div>
+          <div class="sub">Today unique logins</div>
+        </div>
+        <div class="card">
+          <div class="label">Transactions</div>
+          <div class="value" id="totalTransactions">--</div>
+          <div class="sub">All successful transactions</div>
+        </div>
+        <div class="card">
+          <div class="label">Transactions (24h)</div>
+          <div class="value" id="transactions24h">--</div>
+          <div class="sub">Last 24 hours</div>
+        </div>
+        <div class="card">
+          <div class="label">Active Subs</div>
+          <div class="value" id="activeSubs">--</div>
+          <div class="sub">Expire date not passed</div>
+        </div>
+        <div class="card">
+          <div class="label">DB Size</div>
+          <div class="value" id="dbSize">--</div>
+          <div class="sub">Current sqlite size</div>
+        </div>
+      </section>
+
+      <section class="grid charts fade-in" style="animation-delay: 0.15s;">
+        <div class="card chart-card">
+          <div class="chart-head">
+            <div class="chart-title">Registrations</div>
+            <div class="chart-total" id="registrationsTotal">--</div>
+          </div>
+          <div class="chart" id="chartRegistrations"></div>
+          <div class="meta" id="registrationsMeta"></div>
+        </div>
+        <div class="card chart-card">
+          <div class="chart-head">
+            <div class="chart-title">Daily Active</div>
+            <div class="chart-total" id="dailyActiveTotal">--</div>
+          </div>
+          <div class="chart" id="chartDailyActive"></div>
+          <div class="meta" id="dailyActiveMeta"></div>
+        </div>
+        <div class="card chart-card">
+          <div class="chart-head">
+            <div class="chart-title">Transactions</div>
+            <div class="chart-total" id="transactionsTotal">--</div>
+          </div>
+          <div class="chart" id="chartTransactions"></div>
+          <div class="meta" id="transactionsMeta"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const tokenInput = document.getElementById("tokenInput");
+      const daysInput = document.getElementById("daysInput");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const saveBtn = document.getElementById("saveBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const statusMsg = document.getElementById("statusMsg");
+      const updatedAt = document.getElementById("updatedAt");
+
+      const numberFmt = new Intl.NumberFormat("en-US");
+
+      function formatNumber(value) {
+        return numberFmt.format(value || 0);
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes && bytes !== 0) return "--";
+        const units = ["B", "KB", "MB", "GB"];
+        let size = bytes;
+        let index = 0;
+        while (size >= 1024 && index < units.length - 1) {
+          size /= 1024;
+          index += 1;
+        }
+        return `${size.toFixed(1)} ${units[index]}`;
+      }
+
+      function setText(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      }
+
+      function renderBars(container, series, variant) {
+        container.innerHTML = "";
+        const counts = series.map((item) => item.count);
+        const max = Math.max(1, ...counts);
+        series.forEach((item, idx) => {
+          const bar = document.createElement("div");
+          bar.className = `bar ${variant || ""}`.trim();
+          const height = Math.round((item.count / max) * 100);
+          bar.style.setProperty("--h", height);
+          bar.title = `${item.day}: ${item.count}`;
+          if (idx === series.length - 1) {
+            bar.style.filter = "brightness(1.1)";
+          }
+          container.appendChild(bar);
+        });
+      }
+
+      function renderMeta(metaId, series) {
+        const meta = document.getElementById(metaId);
+        if (!meta || !series.length) return;
+        const first = series[0];
+        const last = series[series.length - 1];
+        meta.textContent = `${first.day} \u2192 ${last.day}`;
+      }
+
+      async function loadMetrics() {
+        const token = tokenInput.value.trim();
+        if (!token) {
+          statusMsg.textContent = "Token required.";
+          return;
+        }
+        const days = Number(daysInput.value || 7);
+
+        statusMsg.textContent = "Loading metrics...";
+
+        try {
+          const response = await fetch(`/podcast/admin/metrics?days=${days}`, {
+            headers: {
+              "X-Admin-Token": token
+            }
+          });
+          if (!response.ok) {
+            throw new Error(`Request failed (${response.status})`);
+          }
+          const payload = await response.json();
+          if (payload.code !== 0) {
+            throw new Error(payload.message || "Unexpected response");
+          }
+
+          const data = payload.data;
+          const summary = data.summary || {};
+          const series = data.series || {};
+
+          setText("updatedAt", new Date(data.generated_at).toLocaleString());
+          setText("totalUsers", formatNumber(summary.total_users));
+          setText("newUsers", formatNumber(summary.new_users_24h));
+          setText("dailyActive", formatNumber(summary.daily_active_users));
+          setText("totalTransactions", formatNumber(summary.total_transactions));
+          setText("transactions24h", formatNumber(summary.transactions_24h));
+          setText("activeSubs", formatNumber(summary.active_subscriptions));
+          setText("dbSize", formatBytes(data.db_size_bytes));
+
+          const registrations = series.registrations || [];
+          const dailyActive = series.daily_active || [];
+          const transactions = series.transactions || [];
+
+          setText("registrationsTotal", `Window: ${data.window_days} days`);
+          setText("dailyActiveTotal", `Window: ${data.window_days} days`);
+          setText("transactionsTotal", `Window: ${data.window_days} days`);
+
+          renderBars(document.getElementById("chartRegistrations"), registrations, "");
+          renderBars(document.getElementById("chartDailyActive"), dailyActive, "alt");
+          renderBars(document.getElementById("chartTransactions"), transactions, "deep");
+
+          renderMeta("registrationsMeta", registrations);
+          renderMeta("dailyActiveMeta", dailyActive);
+          renderMeta("transactionsMeta", transactions);
+
+          statusMsg.textContent = "Metrics loaded.";
+        } catch (error) {
+          statusMsg.textContent = error.message || "Failed to load metrics.";
+        }
+      }
+
+      saveBtn.addEventListener("click", () => {
+        const token = tokenInput.value.trim();
+        if (token) {
+          localStorage.setItem("adminMetricsToken", token);
+          loadMetrics();
+        }
+      });
+
+      clearBtn.addEventListener("click", () => {
+        localStorage.removeItem("adminMetricsToken");
+        tokenInput.value = "";
+        statusMsg.textContent = "Token cleared.";
+      });
+
+      refreshBtn.addEventListener("click", loadMetrics);
+
+      const storedToken = localStorage.getItem("adminMetricsToken");
+      if (storedToken) {
+        tokenInput.value = storedToken;
+        loadMetrics();
+      }
+    </script>
+  </body>
+</html>

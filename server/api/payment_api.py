@@ -22,6 +22,12 @@ APP_STORE_ACTIVE_TYPES = {
     "RENEWAL_EXTENDED",
     "REFUND_REVERSED",
 }
+APP_STORE_TRANSACTION_TYPES = {
+    "SUBSCRIBED",
+    "DID_RENEW",
+    "DID_RECOVER",
+    "INTERACTIVE_RENEWAL",
+}
 APP_STORE_RETRY_TYPES = {"DID_FAIL_TO_RENEW"}
 APP_STORE_EXPIRED_TYPES = {"EXPIRED", "GRACE_PERIOD_EXPIRED"}
 APP_STORE_REVOKE_TYPES = {"REFUND", "REVOKE"}
@@ -119,55 +125,85 @@ def verify_purchase_handler(
 
         original_transaction_id = transaction_info['originalTransactionId']
         product_id = transaction_info['productId']
-        expires_date_ms = _coerce_ms(transaction_info.get('expiresDate'))
-
-        # 2. 转换过期时间
-        expires_date = None
-        expires_ts_ms = None
-        if expires_date_ms is not None:
-            expires_ts_ms = int(expires_date_ms)
-            expires_date = AppleReceiptValidator.timestamp_to_datetime(expires_ts_ms)
+        incoming_expires_ms = _coerce_ms(transaction_info.get('expiresDate'))
 
         purchase_date_ms = _coerce_ms(transaction_info.get('purchaseDate'))
         if purchase_date_ms is None:
             purchase_date_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        purchase_date_dt = AppleReceiptValidator.timestamp_to_datetime(purchase_date_ms)
+        incoming_expires_dt = AppleReceiptValidator.timestamp_to_datetime(incoming_expires_ms)
 
         # 3. 创建或更新购买记录
         existing_record = auth_db.get_purchase_record(original_transaction_id)
+        existing_expire_ms = None
+        if existing_record:
+            existing_expire_ms = _coerce_ms(existing_record.get("expire_date"))
+
+        inserted = False
+        if not existing_record:
+            inserted = auth_db.create_purchase_record(
+                original_transaction_id=original_transaction_id,
+                product_id=product_id,
+                purchase_date=purchase_date_dt,
+                expire_date=incoming_expires_dt,
+                event_type=request.event_type
+            )
+            if inserted:
+                logger.info(
+                    "创建购买记录 device_uuid=%s original_transaction_id=%s product_id=%s expire_ms=%s",
+                    device_uuid,
+                    original_transaction_id,
+                    product_id,
+                    incoming_expires_ms,
+                )
+            else:
+                existing_record = auth_db.get_purchase_record(original_transaction_id)
+                if existing_record:
+                    existing_expire_ms = _coerce_ms(existing_record.get("expire_date"))
+
+        record_exists = bool(existing_record) or inserted
+        effective_expire_ms = _max_ms(incoming_expires_ms, existing_expire_ms)
+
+        if (
+            existing_expire_ms is not None
+            and incoming_expires_ms is not None
+            and existing_expire_ms > incoming_expires_ms
+        ):
+            logger.info(
+                "收到较旧凭证，使用已有过期时间 device_uuid=%s original_transaction_id=%s incoming_expire_ms=%s existing_expire_ms=%s",
+                device_uuid,
+                original_transaction_id,
+                incoming_expires_ms,
+                existing_expire_ms,
+            )
+
+        expires_date = None
+        expires_ts_ms = None
+        if effective_expire_ms is not None:
+            expires_ts_ms = int(effective_expire_ms)
+            expires_date = AppleReceiptValidator.timestamp_to_datetime(expires_ts_ms)
+
         logger.info(
             "购买记录查询 device_uuid=%s original_transaction_id=%s found=%s expire_ms=%s purchase_ms=%s",
             device_uuid,
             original_transaction_id,
-            bool(existing_record),
-            expires_date_ms,
+            record_exists,
+            effective_expire_ms,
             purchase_date_ms,
         )
 
-        if not existing_record:
-            # 新购买记录
-            auth_db.create_purchase_record(
-                original_transaction_id=original_transaction_id,
-                product_id=product_id,
-                purchase_date=AppleReceiptValidator.timestamp_to_datetime(purchase_date_ms),
-                expire_date=expires_date,
-                event_type=request.event_type
-            )
-            logger.info(
-                "创建购买记录 device_uuid=%s original_transaction_id=%s product_id=%s expire_ms=%s",
-                device_uuid,
-                original_transaction_id,
-                product_id,
-                expires_date_ms,
-            )
-        else:
+        if existing_record:
             # 更新过期时间（续费场景）
-            if expires_date is not None:
-                auth_db.update_purchase_record_expiry(original_transaction_id, expires_date)
+            if (
+                incoming_expires_ms is not None
+                and (existing_expire_ms is None or incoming_expires_ms > existing_expire_ms)
+            ):
+                auth_db.update_purchase_record_expiry(original_transaction_id, incoming_expires_dt)
                 logger.info(
                     "更新过期时间 device_uuid=%s original_transaction_id=%s new_expire_ms=%s",
                     device_uuid,
                     original_transaction_id,
-                    expires_date_ms,
+                    incoming_expires_ms,
                 )
 
         # 4. 绑定设备
@@ -223,6 +259,13 @@ def verify_purchase_handler(
             transaction_id,
             request.event_type,
         )
+        if transaction_id:
+            auth_db.record_purchase_event(
+                transaction_id=transaction_id,
+                original_transaction_id=original_transaction_id,
+                event_type=request.event_type,
+                device_uuid=device_uuid,
+            )
 
         # 7. 返回结果
         return {
@@ -484,6 +527,23 @@ def app_store_notification_handler(
         if existing_record:
             existing_expire_ms = _coerce_ms(existing_record.get("expire_date"))
 
+        record_inserted = False
+        if not existing_record:
+            if not product_id:
+                raise ValueError("Missing productId")
+            record_inserted = auth_db.create_purchase_record(
+                original_transaction_id=original_transaction_id,
+                product_id=product_id,
+                purchase_date=purchase_dt,
+                expire_date=expire_dt,
+                environment=environment or "production",
+                status=status,
+            )
+            if not record_inserted:
+                existing_record = auth_db.get_purchase_record(original_transaction_id)
+                if existing_record:
+                    existing_expire_ms = _coerce_ms(existing_record.get("expire_date"))
+
         if (
             existing_expire_ms is not None
             and effective_expire_ms is not None
@@ -505,34 +565,7 @@ def app_store_notification_handler(
                 "data": {"stale": True, "duplicate": not inserted},
             }
 
-        inserted = auth_db.create_notification_log(
-            notification_uuid=notification_uuid,
-            notification_type=notification_type,
-            subtype=subtype,
-            original_transaction_id=original_transaction_id,
-            transaction_id=transaction_info.get("transactionId"),
-            environment=environment,
-            signed_payload=signed_payload,
-        )
-        if not inserted:
-            return {
-                "code": 0,
-                "message": "success",
-                "data": {"duplicate": True},
-            }
-
-        if not existing_record:
-            if not product_id:
-                raise ValueError("Missing productId")
-            auth_db.create_purchase_record(
-                original_transaction_id=original_transaction_id,
-                product_id=product_id,
-                purchase_date=purchase_dt,
-                expire_date=expire_dt,
-                environment=environment or "production",
-                status=status,
-            )
-        else:
+        if existing_record:
             if effective_expire_ms is not None:
                 if existing_expire_ms is None or effective_expire_ms > existing_expire_ms:
                     auth_db.update_purchase_record_expiry(original_transaction_id, expire_dt)
@@ -552,6 +585,25 @@ def app_store_notification_handler(
             vip_expire_time=expire_dt,
         )
 
+        transaction_id = transaction_info.get("transactionId")
+        if transaction_id and notification_type in APP_STORE_TRANSACTION_TYPES:
+            auth_db.record_purchase_event(
+                transaction_id=transaction_id,
+                original_transaction_id=original_transaction_id,
+                event_type=notification_type,
+                device_uuid=None,
+            )
+
+        inserted = auth_db.create_notification_log(
+            notification_uuid=notification_uuid,
+            notification_type=notification_type,
+            subtype=subtype,
+            original_transaction_id=original_transaction_id,
+            transaction_id=transaction_info.get("transactionId"),
+            environment=environment,
+            signed_payload=signed_payload,
+        )
+
         return {
             "code": 0,
             "message": "success",
@@ -559,6 +611,7 @@ def app_store_notification_handler(
                 "notification_type": notification_type,
                 "is_vip": is_vip,
                 "vip_expire_time": effective_expire_ms,
+                "duplicate": not inserted,
             },
         }
     except ValueError as exc:

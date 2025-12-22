@@ -4,7 +4,7 @@ import logging
 import time
 from fastapi import FastAPI, HTTPException, Query, APIRouter, Body, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Dict, Any, Annotated
 from .database import PodcastDatabase
 from .cos_service import COSService
@@ -16,6 +16,7 @@ from .api.payment_api import (
     unbind_device_handler,
     app_store_notification_handler,
 )
+from .api.metrics_api import get_metrics_handler
 from .schemas.auth import RegisterRequest
 from .schemas.payment import VerifyPurchaseRequest, AppStoreNotificationRequest
 from .dependencies.auth import get_current_device_uuid
@@ -36,6 +37,10 @@ if not logging.getLogger().hasHandlers():
 
 logger = logging.getLogger('languageflow')
 payment_logger = logging.getLogger('languageflow.payment')
+request_log_mode = os.getenv("LOG_REQUESTS", "slow").lower()
+slow_request_ms = float(os.getenv("LOG_SLOW_REQUEST_MS", "1000"))
+base_dir = os.path.dirname(os.path.abspath(__file__))
+admin_dashboard_path = os.path.join(base_dir, "static", "admin_dashboard.html")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,19 +56,31 @@ async def log_requests(request: Request, call_next):
     start_time = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start_time) * 1000
-    logger.info(
-        "HTTP %s %s status=%s duration=%.1fms",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-    )
+    should_log = False
+    if request_log_mode == "all":
+        should_log = True
+    elif request_log_mode == "error":
+        should_log = response.status_code >= 400
+    elif request_log_mode == "none":
+        should_log = False
+    else:
+        should_log = response.status_code >= 400 or duration_ms >= slow_request_ms
+
+    if should_log:
+        logger.info(
+            "HTTP %s %s status=%s duration=%.1fms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
     return response
 
 podcast_router = APIRouter(prefix="/podcast/info", tags=["podcast"])
 auth_router = APIRouter(prefix="/podcast/auth", tags=["authentication"])
 payment_router = APIRouter(prefix="/podcast/payment", tags=["payment"])
 user_router = APIRouter(prefix="/podcast/user", tags=["user"])
+metrics_router = APIRouter(prefix="/podcast/admin", tags=["admin"])
 
 # 初始化数据库
 db_path = os.getenv("DB_PATH", "podcasts.db")
@@ -575,10 +592,35 @@ async def unbind_device(
         raise HTTPException(status_code=500, detail=f'解绑失败: {str(error)}')
 
 
+@metrics_router.get('/metrics')
+async def get_metrics(
+    days: int = Query(7, ge=1, le=90),
+    x_admin_token: Annotated[str | None, Header()] = None,
+):
+    """后台指标快照（注册与购买）"""
+    try:
+        result = get_metrics_handler(auth_db, days=days, admin_token=x_admin_token, db_path=db_path)
+        return JSONResponse(result)
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception('[server] 获取指标失败')
+        raise HTTPException(status_code=500, detail=f'获取失败: {str(error)}')
+
+
+@metrics_router.get('/dashboard')
+async def metrics_dashboard():
+    """后台指标面板（需要页面内 token 才能加载数据）"""
+    if not os.path.exists(admin_dashboard_path):
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    return FileResponse(admin_dashboard_path, media_type="text/html")
+
+
 app.include_router(podcast_router)
 app.include_router(auth_router)
 app.include_router(payment_router)
 app.include_router(user_router)
+app.include_router(metrics_router)
 
 # 根路径
 @app.get("/")
